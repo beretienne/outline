@@ -818,6 +818,47 @@ export class Environment {
     this.toOptionalString(environment.SEARCH_PROVIDER) ?? "postgres";
 
   /**
+   * The provider used to generate document summaries and keywords for MCP
+   * frontmatter. "heuristic" runs locally in-process, while
+   * "openai-compatible" calls a configured hosted or local endpoint.
+   */
+  @IsOptional()
+  @IsIn(["heuristic", "openai-compatible"])
+  public DOCUMENT_METADATA_AI_PROVIDER =
+    this.toOptionalString(environment.DOCUMENT_METADATA_AI_PROVIDER) ??
+    "heuristic";
+
+  /**
+   * Base URL for an OpenAI-compatible metadata generation endpoint, for example
+   * https://api.openai.com/v1 or http://localhost:11434/v1.
+   */
+  @IsOptional()
+  @IsUrl({
+    protocols: ["http", "https"],
+    require_protocol: true,
+    require_tld: false,
+  })
+  public DOCUMENT_METADATA_AI_URL = this.toOptionalString(
+    environment.DOCUMENT_METADATA_AI_URL
+  );
+
+  /**
+   * Model name to use with the OpenAI-compatible metadata generation endpoint.
+   */
+  @IsOptional()
+  public DOCUMENT_METADATA_AI_MODEL = this.toOptionalString(
+    environment.DOCUMENT_METADATA_AI_MODEL
+  );
+
+  /**
+   * Optional bearer token for the OpenAI-compatible metadata generation endpoint.
+   */
+  @IsOptional()
+  public DOCUMENT_METADATA_AI_API_KEY = this.toOptionalString(
+    environment.DOCUMENT_METADATA_AI_API_KEY
+  );
+
+  /**
    * The product name
    */
   @Public

@@ -16,6 +16,8 @@ export { default as Comment } from "./Comment";
 
 export { default as Document } from "./Document";
 
+export { default as DocumentMetadata } from "./DocumentMetadata";
+
 export { default as DocumentInsight } from "./DocumentInsight";
 
 export { default as Event } from "./Event";

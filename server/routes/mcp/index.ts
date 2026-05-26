@@ -28,6 +28,8 @@ const defaultInstructions = `Document markdown content must not begin with a top
 
 Document and collection markdown support @mentions using the syntax: @[Display Name](mention://user/userId). For example: @[John Doe](mention://user/c9a1b2e3-...). Use the "list_users" tool to find user IDs.
 
+Use "list_collection_documents" to retrieve a collection table of contents before fetching per-document metadata with "fetch_document_frontmatter".
+
 Read images and attachments with the "fetch" tool by setting resource to "attachment" and passing either the attachment ID or an /api/attachments.redirect?id=... URL; the tool will return a signed URL for download.`;
 
 /**

@@ -10,6 +10,10 @@ import { sequelize } from "@server/storage/database";
 import { authorize } from "@server/policies";
 import { presentDocument, presentNavigationNode } from "@server/presenters";
 import AuthenticationHelper from "@shared/helpers/AuthenticationHelper";
+import {
+  ensureDocumentMetadata,
+  renderDocumentFrontmatter,
+} from "@server/utils/documentMetadata";
 import { UrlHelper } from "@shared/utils/UrlHelper";
 import {
   error,
@@ -262,6 +266,80 @@ export function documentTools(server: McpServer, scopes: string[]) {
           }
         }
       )
+    );
+  }
+
+  if (AuthenticationHelper.canAccess("documents.info", scopes)) {
+    server.registerTool(
+      "fetch_document_frontmatter",
+      {
+        title: "Fetch document frontmatter",
+        description:
+          "Fetches generated metadata for a published document and returns it as both structured JSON and YAML frontmatter. Use this after listing a collection TOC when you need a document summary and ranked keywords without fetching the full body.",
+        annotations: {
+          idempotentHint: true,
+          readOnlyHint: true,
+        },
+        inputSchema: {
+          id: z
+            .string()
+            .describe("The unique identifier of the document to inspect."),
+        },
+      },
+      withTracing("fetch_document_frontmatter", async ({ id }, context) => {
+        try {
+          const user = getActorFromContext(context);
+          const document = await Document.findByPk(id, {
+            userId: user.id,
+            rejectOnEmpty: true,
+          });
+
+          authorize(user, "read", document);
+
+          const [metadata, breadcrumb, { text, ...attributes }] =
+            await Promise.all([
+              ensureDocumentMetadata(document),
+              getDocumentBreadcrumb(document, user),
+              presentDocument(undefined, document, {
+                includeData: false,
+                includeText: false,
+                includeUpdatedAt: true,
+              }),
+            ]);
+
+          if (!metadata) {
+            throw new Error("Metadata is not available for this document");
+          }
+
+          const frontmatter = {
+            title: document.title,
+            ...(breadcrumb ? { breadcrumb } : {}),
+            summary: metadata.summary,
+            keywords: metadata.keywords,
+            generatedAt: metadata.generatedAt.toISOString(),
+            sourceUpdatedAt: metadata.sourceUpdatedAt.toISOString(),
+            provider: metadata.provider,
+          };
+
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: JSON.stringify({
+                  document: pathToUrl(user.team, attributes),
+                  frontmatter,
+                }),
+              },
+              {
+                type: "text" as const,
+                text: renderDocumentFrontmatter(frontmatter),
+              },
+            ],
+          } satisfies CallToolResult;
+        } catch (message) {
+          return error(message);
+        }
+      })
     );
   }
 

@@ -1,5 +1,5 @@
 import { Scope, TeamPreference } from "@shared/types";
-import type { ProsemirrorData } from "@shared/types";
+import { parser } from "@server/editor";
 import { Attachment } from "@server/models";
 import { UserFlag } from "@server/models/User";
 import {
@@ -256,6 +256,102 @@ describe("POST /mcp/", () => {
         (d: { document: { id: string } }) => d.document.id === document.id
       ) as { document: { url: string } };
       expect(match.document.url).toMatch(/^https?:\/\//);
+    });
+
+    it("fetch_document_frontmatter returns JSON metadata and YAML frontmatter", async () => {
+      const { user, accessToken } = await buildOAuthUser();
+      const collection = await buildCollection({
+        teamId: user.teamId,
+        userId: user.id,
+        name: "Knowledge Base",
+      });
+      const parent = await buildDocument({
+        teamId: user.teamId,
+        userId: user.id,
+        collectionId: collection.id,
+        title: "Architecture",
+      });
+      const child = await buildDocument({
+        teamId: user.teamId,
+        userId: user.id,
+        collectionId: collection.id,
+        parentDocumentId: parent.id,
+        title: "Metadata",
+        text: "Metadata pipeline. This document explains MCP frontmatter generation and keyword extraction.",
+      });
+
+      const res = await callMcpTool(
+        server,
+        accessToken,
+        "fetch_document_frontmatter",
+        {
+          id: child.id,
+        }
+      );
+
+      expect(res?.result?.content?.length).toEqual(2);
+
+      const data = JSON.parse(res?.result?.content?.[0]?.text ?? "{}");
+      const yaml = res?.result?.content?.[1]?.text ?? "";
+
+      expect(data.document.id).toEqual(child.id);
+      expect(data.frontmatter.title).toEqual("Metadata");
+      expect(data.frontmatter.breadcrumb).toContain("Knowledge Base");
+      expect(data.frontmatter.breadcrumb).toContain("Architecture");
+      expect(data.frontmatter.summary).toContain("Metadata pipeline");
+      expect(data.frontmatter.keywords.length).toBeGreaterThan(0);
+      expect(yaml).toContain("title: Metadata");
+      expect(yaml).toContain("summary:");
+      expect(yaml).toContain("keywords:");
+    });
+
+    it("fetch_document_frontmatter refreshes stale metadata on demand", async () => {
+      const { user, accessToken } = await buildOAuthUser();
+      const collection = await buildCollection({
+        teamId: user.teamId,
+        userId: user.id,
+      });
+      const document = await buildDocument({
+        teamId: user.teamId,
+        userId: user.id,
+        collectionId: collection.id,
+        title: "Metadata",
+        text: "First version. The original summary should change after the update.",
+      });
+
+      const first = await callMcpTool(
+        server,
+        accessToken,
+        "fetch_document_frontmatter",
+        {
+          id: document.id,
+        }
+      );
+      const initial = JSON.parse(first?.result?.content?.[0]?.text ?? "{}");
+
+      await document.update({
+        content: parser
+          .parse(
+            "Second version. The refreshed summary should mention orchestration and local models."
+          )
+          ?.toJSON(),
+        text: "Second version. The refreshed summary should mention orchestration and local models.",
+      });
+
+      const second = await callMcpTool(
+        server,
+        accessToken,
+        "fetch_document_frontmatter",
+        {
+          id: document.id,
+        }
+      );
+      const refreshed = JSON.parse(second?.result?.content?.[0]?.text ?? "{}");
+
+      expect(initial.frontmatter.summary).not.toEqual(
+        refreshed.frontmatter.summary
+      );
+      expect(refreshed.frontmatter.summary).toContain("Second version");
     });
 
     it("list_documents filters by collection", async () => {
