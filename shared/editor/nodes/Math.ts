@@ -87,7 +87,7 @@ export default class Math extends Node {
     // Pipes inside math would otherwise be mistaken for cell delimiters when
     // the math appears within a table, so escape them here.
     const content = state.inTable
-      ? node.textContent.replace(/\|/g, "\\|")
+      ? node.textContent.replace(/\|/g, "\\$&")
       : node.textContent;
     state.text(content, false);
     state.write("$");
