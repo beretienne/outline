@@ -22,6 +22,41 @@ export enum NoticeTypes {
   Warning = "warning",
 }
 
+const noticeTypeToMystDirective: Record<NoticeTypes, string> = {
+  [NoticeTypes.Info]: "note",
+  [NoticeTypes.Tip]: "tip",
+  [NoticeTypes.Warning]: "caution",
+  [NoticeTypes.Success]: "seealso",
+};
+
+function markdownNoticeStyle(info: string): NoticeTypes | undefined {
+  // MyST directives may be written with or without the curly braces, e.g.
+  // both "{note}" and "note" name the same directive.
+  const name = info.trim().replace(/^\{(.+)\}$/, "$1");
+  if (name === "note") {
+    return NoticeTypes.Info;
+  }
+  if (name === "caution") {
+    return NoticeTypes.Warning;
+  }
+  if (name === "seealso") {
+    return NoticeTypes.Success;
+  }
+  if (name === NoticeTypes.Info) {
+    return NoticeTypes.Info;
+  }
+  if (name === NoticeTypes.Tip) {
+    return NoticeTypes.Tip;
+  }
+  if (name === NoticeTypes.Warning) {
+    return NoticeTypes.Warning;
+  }
+  if (name === NoticeTypes.Success) {
+    return NoticeTypes.Success;
+  }
+  return undefined;
+}
+
 export default class Notice extends Node {
   get name() {
     return "container_notice";
@@ -172,17 +207,19 @@ export default class Notice extends Node {
   }
 
   toMarkdown(state: MarkdownSerializerState, node: ProsemirrorNode) {
-    state.write("\n:::" + (node.attrs.style || "info") + "\n");
+    const style: NoticeTypes = node.attrs.style || NoticeTypes.Info;
+    const directive = noticeTypeToMystDirective[style] ?? style;
+    state.write(`\n\`\`\`{${directive}}\n`);
     state.renderContent(node);
     state.ensureNewLine();
-    state.write(":::");
+    state.write("```");
     state.closeBlock(node);
   }
 
   parseMarkdown() {
     return {
       block: "container_notice",
-      getAttrs: (tok: Token) => ({ style: tok.info }),
+      getAttrs: (tok: Token) => ({ style: markdownNoticeStyle(tok.info) }),
     };
   }
 }

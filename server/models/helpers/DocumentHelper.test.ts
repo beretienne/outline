@@ -579,6 +579,37 @@ This is a [test paragraph](https://example.net)`,
       expect(result).toBe("the cat’s “meow”");
     });
 
+    it("should export info notices as MyST note fences", async () => {
+      const document = await buildDocument({
+        content: {
+          type: "doc",
+          content: [
+            {
+              type: "container_notice",
+              attrs: {
+                style: "info",
+              },
+              content: [
+                {
+                  type: "paragraph",
+                  content: [{ type: "text", text: "Info content" }],
+                },
+              ],
+            },
+          ],
+        },
+      });
+
+      const result = await DocumentHelper.toMarkdown(document, {
+        includeTitle: false,
+      });
+
+      expect(result).toContain("```{note}");
+      expect(result).toContain("Info content");
+      expect(result).toContain("```");
+      expect(result).not.toContain(":::info");
+    });
+
     it("should not crash serializing a table with no rows", async () => {
       const document = await buildDocument({
         content: {
@@ -1133,10 +1164,10 @@ This is a [test paragraph](https://example.net)`,
       // newlines that would break the table row structure, with pipes escaped
       // so the content cannot break out of the column.
       expect(result).toContain(
-        ":::warning<br>First \\| line<br><br>Second line<br><br>:::"
+        "```{caution}<br>First \\| line<br><br>Second line<br><br>```"
       );
       // The notice must not introduce raw newlines inside the table.
-      expect(result).not.toMatch(/:::warning\n/);
+      expect(result).not.toMatch(/```\{caution\}\n/);
     });
 
     it("should include collection title by default", async () => {

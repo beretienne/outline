@@ -1,5 +1,6 @@
 import type MarkdownIt from "markdown-it";
 import { unescapeRawTableCell } from "../lib/markdown/tableCell";
+import { mystDirectiveName } from "./notices";
 
 const BR_TAG_REGEX = /<br\s*\/?>/gi;
 
@@ -90,8 +91,15 @@ function parseFencedCell(
 
   // Code & math fences are raw, so the parser won't undo the escaping the
   // serializer added to keep the cell intact — reverse it here. Notice and
-  // toggle content is inline, so markdown unescapes it on re-parse.
-  const isRawFence = source.startsWith("```") || source.startsWith("$$");
+  // toggle content is inline (including notices serialized as MyST directive
+  // fences, which share the "```" marker with code fences), so markdown
+  // unescapes it on re-parse.
+  const firstLineEnd = source.indexOf("\n");
+  const firstLineInfo = source.slice(3, firstLineEnd === -1 ? undefined : firstLineEnd);
+  const isNoticeFence =
+    source.startsWith("```") && mystDirectiveName(firstLineInfo) !== undefined;
+  const isRawFence =
+    (source.startsWith("```") && !isNoticeFence) || source.startsWith("$$");
   const unescaped = isRawFence ? unescapeRawTableCell(source) : source;
 
   const tokens = md.parse(unescaped, env);

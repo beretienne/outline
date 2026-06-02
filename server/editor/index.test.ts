@@ -145,3 +145,51 @@ test("serializes uppercase alpha lists back to markdown", () => {
 
   expect(output.trim()).toBe("A. First item\nB. Second item");
 });
+
+test("serializes info notices as MyST note fences", () => {
+  const ast = parser.parse(":::info\nNotice content\n:::");
+  const output = serializer.serialize(ast);
+
+  expect(output.trim()).toBe("```{note}\nNotice content\n\n```");
+});
+
+test("serializes tip notices as MyST tip fences", () => {
+  const ast = parser.parse(":::tip\nNotice content\n:::");
+  const output = serializer.serialize(ast);
+
+  expect(output.trim()).toBe("```{tip}\nNotice content\n\n```");
+});
+
+test("serializes warning notices as MyST caution fences", () => {
+  const ast = parser.parse(":::warning\nNotice content\n:::");
+  const output = serializer.serialize(ast);
+
+  expect(output.trim()).toBe("```{caution}\nNotice content\n\n```");
+});
+
+test("serializes success notices as MyST seealso fences", () => {
+  const ast = parser.parse(":::success\nNotice content\n:::");
+  const output = serializer.serialize(ast);
+
+  expect(output.trim()).toBe("```{seealso}\nNotice content\n\n```");
+});
+
+test("preserves warning and success when parsing MyST aliases", () => {
+  const warningAst = parser.parse("```{caution}\nNotice content\n```");
+  const warningOutput = serializer.serialize(warningAst);
+  expect(warningOutput.trim()).toBe("```{caution}\nNotice content\n\n```");
+
+  const successAst = parser.parse("```{seealso}\nNotice content\n```");
+  const successOutput = serializer.serialize(successAst);
+  expect(successOutput.trim()).toBe("```{seealso}\nNotice content\n\n```");
+});
+
+test("preserves warning and success when parsing colon-fenced MyST aliases", () => {
+  const warningAst = parser.parse(":::{caution}\nNotice content\n:::");
+  const warningOutput = serializer.serialize(warningAst);
+  expect(warningOutput.trim()).toBe("```{caution}\nNotice content\n\n```");
+
+  const successAst = parser.parse(":::{seealso}\nNotice content\n:::");
+  const successOutput = serializer.serialize(successAst);
+  expect(successOutput.trim()).toBe("```{seealso}\nNotice content\n\n```");
+});
