@@ -87,7 +87,11 @@ export class DocumentConverter extends BaseConverter {
     }
 
     // Serialize to markdown and trim whitespace
-    const text = serializer.serialize(doc).trim();
+    const text = serializer
+      .serialize(doc, {
+        commonMark: true,
+      })
+      .trim();
 
     return {
       text,
