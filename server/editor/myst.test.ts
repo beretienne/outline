@@ -59,6 +59,31 @@ describe("preserved exactly", () => {
   });
 
   /**
+   * Admonitions the notice rules do not claim stay CodeFence nodes, so their
+   * title, option lines and body all travel verbatim. Only the four names in
+   * `mystNoticeFences` — note, tip, caution, seealso — become Notice nodes, and
+   * only when written without a title.
+   */
+  test.each([
+    ["titled note", "```{note} Custom Title\nBody.\n```"],
+    ["titled generic admonition", "```{admonition} Custom Title\nBody.\n```"],
+    [
+      "titled admonition with options",
+      "```{admonition} Important\n:class: danger\n\nBody.\n```",
+    ],
+    ["untitled generic admonition", "```{admonition}\nBody.\n```"],
+    ["warning", "```{warning}\nBody.\n```"],
+    ["danger", "```{danger}\nBody.\n```"],
+    ["attention", "```{attention}\nBody.\n```"],
+    ["hint", "```{hint}\nBody.\n```"],
+    ["important", "```{important}\nBody.\n```"],
+    ["error", "```{error}\nBody.\n```"],
+    ["admonition with options", "```{danger}\n:class: custom\n\nBody.\n```"],
+  ])("unclaimed admonition: %s", (_name, source) => {
+    expect(roundTrip(source)).toBe(source);
+  });
+
+  /**
    * Inline MyST constructs are opaque to Outline and travel as literal text.
    */
   test.each([
@@ -111,8 +136,52 @@ describe("normalized to a canonical form", () => {
       ":::success\nBody.\n:::",
       "```{seealso}\nBody.\n\n```",
     ],
+    [
+      "tip bodies gain a trailing blank line",
+      "```{tip}\nBody.\n```",
+      "```{tip}\nBody.\n\n```",
+    ],
+    [
+      "caution bodies gain a trailing blank line",
+      "```{caution}\nBody.\n```",
+      "```{caution}\nBody.\n\n```",
+    ],
+    [
+      "seealso bodies gain a trailing blank line",
+      "```{seealso}\nBody.\n```",
+      "```{seealso}\nBody.\n\n```",
+    ],
   ])("%s", (_name, source, canonical) => {
     expect(roundTrip(source)).toBe(canonical);
+  });
+});
+
+/**
+ * Where a notice node costs information. Both cases share one cause: once the
+ * rules claim a fence, its contents are re-parsed as markdown and re-serialized
+ * from a node that has nowhere to keep a title or an option line.
+ *
+ * `outline-sync` avoids the first by rewriting colon fences to backtick fences
+ * before pushing. The second has no workaround on this side and belongs to the
+ * profile linter.
+ */
+describe("notice nodes lose directive metadata", () => {
+  test("a colon-fenced admonition loses its title, name and options", () => {
+    // The real case from doc-metas. `mystNoticeFences` claims any colon fence
+    // whose name looks like an admonition, title and all, so `{admonition}
+    // Important` arrives as a plain note and `:class:` comes back escaped.
+    expect(
+      roundTrip(":::{admonition} Important\n:class: danger\n\nBody.\n:::")
+    ).toBe("```{note}\n\\:class: danger\n\nBody.\n\n```");
+  });
+
+  test("an untitled note escapes its option lines", () => {
+    // A backtick fence is normally left alone, but note/tip/caution/seealso
+    // without a title become Notice nodes, and `:class:` is then body text.
+    // Giving the directive a title keeps it a CodeFence and preserves options.
+    expect(roundTrip("```{note}\n:class: custom\n\nBody.\n```")).toBe(
+      "```{note}\n\\:class: custom\n\nBody.\n\n```"
+    );
   });
 });
 
