@@ -27,6 +27,27 @@ const OUTLINE_NOTICE_STYLES = ["info", "success", "tip", "warning"];
 /** A MyST option line, e.g. `:class: danger`. */
 const OPTION_LINE = /^:[A-Za-z0-9_-]+:(?:\s|$)/;
 
+/**
+ * Block tokens a notice node has nowhere to put.
+ *
+ * `container_notice`'s content expression allows lists, blockquotes, rules,
+ * paragraphs, headings, code and attachments — and nothing else. Turning a fence
+ * into a notice when the body holds one of these does not fail loudly: the node
+ * cannot be built, and the entire block is dropped from the document. A real
+ * `::::{admonition}` wrapping a `:::{figure-md}` lost its prose, its image and
+ * its caption that way.
+ *
+ * So a fence carrying any of them is left alone. It renders as an inert code
+ * block rather than a callout, which is the same bargain every directive Outline
+ * has no node for already makes, and nothing is lost.
+ */
+const UNCONTAINABLE_BLOCKS = [
+  "table_open",
+  "math_block",
+  "container_notice_open",
+  "container_toggle_open",
+];
+
 export type NoticeDirective = {
   /** The directive name, without braces, e.g. "important". */
   directive: string;
@@ -95,6 +116,13 @@ function mystNoticeFences(md: MarkdownIt): void {
         continue;
       }
 
+      const contentTokens: Token[] = [];
+      state.md.block.parse(token.content, state.md, state.env, contentTokens);
+
+      if (contentTokens.some((t) => UNCONTAINABLE_BLOCKS.includes(t.type))) {
+        continue;
+      }
+
       const openToken = new state.Token("container_notice_open", "div", 1);
       openToken.info = token.info;
       openToken.block = true;
@@ -102,9 +130,6 @@ function mystNoticeFences(md: MarkdownIt): void {
 
       const closeToken = new state.Token("container_notice_close", "div", -1);
       closeToken.block = true;
-
-      const contentTokens: Token[] = [];
-      state.md.block.parse(token.content, state.md, state.env, contentTokens);
 
       tokens.splice(i, 1, openToken, ...contentTokens, closeToken);
     }

@@ -199,17 +199,70 @@ describe("admonitions become notices without losing anything", () => {
 });
 
 /**
- * Known limit, unchanged by the above: the colon container claims every `:::`
- * fence, so a directive that is not an admonition is flattened into a plain
- * note. `outline-sync` sidesteps this by moving directives onto backtick fences
- * before pushing, which is the only spelling that survives for the ones Outline
- * has no node for.
+ * A notice node can hold lists, blockquotes, rules, paragraphs, headings, code
+ * and attachments — and nothing else. When a directive's body holds anything
+ * further, making it a notice does not fail loudly: the node cannot be built and
+ * the whole block vanishes from the document.
+ *
+ * So those fences are not claimed. They render as inert code blocks, the same
+ * bargain every directive Outline has no node for already makes, and every byte
+ * survives. The alternative is a callout that eats its own contents.
  */
-describe("colon fences that are not admonitions", () => {
+describe("directives holding what a notice cannot", () => {
+  test.each([
+    ["a table", "```{note}\n| a | b |\n|---|---|\n| 1 | 2 |\n```"],
+    ["a math block", "```{note}\nProse.\n\n$$\nx^2\n$$\n```"],
+    ["a nested colon directive", "````{note}\nProse.\n\n:::{tip}\nInner.\n:::\n````"],
+    ["a toggle block", "````{note}\nProse.\n\n+++\nHidden.\n+++\n````"],
+  ])("stays a code fence rather than being emptied: %s", (_name, source) => {
+    const once = roundTrip(source);
+    expect(once).not.toBe("");
+    expect(once).toContain("{note}");
+  });
+
+  test("the real nested figure from doc-model-approval survives whole", () => {
+    // `::::{admonition}` wrapping a `:::{figure-md}`. Claiming this dropped the
+    // prose, the image and the caption in one go.
+    const source = [
+      "````{admonition} Important note",
+      ":class: danger",
+      "",
+      "Ensure that the cables are routed to the rear of the camera mount.",
+      "",
+      ":::{figure-md} camera_wiring_11",
+      "![](media/Connecting_the_camera.011.png){width=600}",
+      "",
+      "Camera wiring - 11",
+      ":::",
+      "````",
+    ].join("\n");
+
+    const once = roundTrip(source);
+    expect(once).toContain("Connecting_the_camera.011.png");
+    expect(once).toContain("Camera wiring - 11");
+    expect(once).toContain("camera_wiring_11");
+    expect(once).toContain("Ensure that the cables");
+  });
+});
+
+/**
+ * Known limits of the colon container, both predating the notice work. It
+ * claims every `:::` fence on sight, before anything can look at what is inside.
+ *
+ * `outline-sync` keeps a source tree clear of both by moving admonitions onto
+ * backtick fences before pushing.
+ */
+describe("known limits of the colon container", () => {
   test("a dropdown is swallowed and becomes a note", () => {
     expect(roundTrip(":::{dropdown} More\nHidden.\n:::")).toBe(
       "```{note}\nHidden.\n\n```"
     );
+  });
+
+  test("a colon fence holding a table is emptied", () => {
+    // The backtick path checks its contents before claiming; this one cannot,
+    // because markdown-it-container decides from the info string alone.
+    expect(roundTrip(":::{note}\n| a | b |\n|---|---|\n| 1 | 2 |\n:::")).toBe("");
   });
 });
 
