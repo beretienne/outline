@@ -141,6 +141,28 @@ The types available are `note`, `tip`, `hint`, `important`, `caution`,
 `warning`, `attention`, `danger`, `error`, `seealso`, and the general-purpose
 `admonition`.
 
+**Titles are plain text.** Writing `{admonition} **Important note**` shows the
+asterisks rather than bold. No need for them — the title is already rendered in
+bold, so `{admonition} Important note` gives you what you were after.
+
+**What fits inside a callout.** Prose, lists, quotes, headings and images all sit
+happily inside one. A table, a standalone formula, another callout or a toggle
+block do not: a callout has nowhere to put them, so the block keeps its plain
+code-block appearance instead of turning into a coloured callout. Everything you
+wrote is still there and still correct — it simply does not get the colour.
+
+Putting the table or the formula just after the callout gives you both:
+
+````markdown
+```{note}
+The measured values for each section are below.
+```
+
+| Section | Distance |
+| --- | --- |
+| A | 1200 m |
+````
+
 ### Toggle block — the collapsible "▸" block
 
 A neat trick on screen, but there is nothing to collapse in a printed manual, so
@@ -155,7 +177,10 @@ Come through perfectly, language dropdown included.
 **One arrangement to keep an eye out for: a code block tucked inside a
 callout.** Both are fenced with ` ``` `, so the callout closes at the code block
 rather than wrapping around it, and the two drift apart a little more each time
-the page is saved. Putting the code just below the callout reads better anyway:
+the page is saved. A longer outer fence does not rescue it either, because the
+closing fence is always written back with three backticks.
+
+Putting the code just below the callout reads better anyway:
 
 ````markdown
 ```{note}
@@ -278,9 +303,14 @@ The picture and the words come through; what is set aside is Sphinx's knowledge
 that one was a numbered figure and the other an unnumbered heading. If a page
 depends on numbered figure references, keep it out of the Outline sync.
 
-**One arrangement to avoid**, the same as with callouts: a code fence inside a
-directive. Both use ` ``` `, so the directive closes early. Keep code blocks
-alongside directives rather than inside them.
+**Two arrangements to avoid**, both shared with callouts:
+
+- A code fence inside a directive. Both use ` ``` `, so the directive closes
+  early. Keep code blocks alongside directives rather than inside them.
+- A directive nested inside an admonition — a `{figure}` or `{figure-md}` inside
+  an `{admonition}`, say. The outer block keeps its plain code-block appearance
+  rather than becoming a callout. Nothing is lost, but if you wanted the colour,
+  put the figure after the admonition rather than inside it.
 
 ---
 
