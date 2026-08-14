@@ -1,4 +1,4 @@
-import { parser, serializer } from ".";
+import { parser, schema, serializer } from ".";
 
 /**
  * Round-trips markdown through the same path the API uses: `documents.update`
@@ -59,27 +59,14 @@ describe("preserved exactly", () => {
   });
 
   /**
-   * Admonitions the notice rules do not claim stay CodeFence nodes, so their
-   * title, option lines and body all travel verbatim. Only the four names in
-   * `mystNoticeFences` — note, tip, caution, seealso — become Notice nodes, and
-   * only when written without a title.
+   * A backtick fence whose info string is a bare word stays a code block, even
+   * when that word happens to name an admonition. MyST writes directives in
+   * braces, and ```error is far more likely to open a block of error output.
    */
   test.each([
-    ["titled note", "```{note} Custom Title\nBody.\n```"],
-    ["titled generic admonition", "```{admonition} Custom Title\nBody.\n```"],
-    [
-      "titled admonition with options",
-      "```{admonition} Important\n:class: danger\n\nBody.\n```",
-    ],
-    ["untitled generic admonition", "```{admonition}\nBody.\n```"],
-    ["warning", "```{warning}\nBody.\n```"],
-    ["danger", "```{danger}\nBody.\n```"],
-    ["attention", "```{attention}\nBody.\n```"],
-    ["hint", "```{hint}\nBody.\n```"],
-    ["important", "```{important}\nBody.\n```"],
-    ["error", "```{error}\nBody.\n```"],
-    ["admonition with options", "```{danger}\n:class: custom\n\nBody.\n```"],
-  ])("unclaimed admonition: %s", (_name, source) => {
+    ["error", "```error\nsome error output\n```"],
+    ["note", "```note\nnot a directive\n```"],
+  ])("bare info string stays a code block: %s", (_name, source) => {
     expect(roundTrip(source)).toBe(source);
   });
 
@@ -157,30 +144,102 @@ describe("normalized to a canonical form", () => {
 });
 
 /**
- * Where a notice node costs information. Both cases share one cause: once the
- * rules claim a fence, its contents are re-parsed as markdown and re-serialized
- * from a node that has nowhere to keep a title or an option line.
+ * Every MyST admonition becomes a Notice node, so it is drawn as a callout
+ * rather than as an inert code block — and comes back with its directive name,
+ * title and option lines intact. The only change is the blank line the
+ * serializer leaves before the closing fence, which is stable.
  *
- * `outline-sync` avoids the first by rewriting colon fences to backtick fences
- * before pushing. The second has no workaround on this side and belongs to the
- * profile linter.
+ * The Notice node carries `directive`, `title` and `options` for exactly this
+ * reason. Without them a callout could only be one of four things, and anything
+ * else about the directive was lost the moment it was drawn.
  */
-describe("notice nodes lose directive metadata", () => {
-  test("a colon-fenced admonition loses its title, name and options", () => {
-    // The real case from doc-metas. `mystNoticeFences` claims any colon fence
-    // whose name looks like an admonition, title and all, so `{admonition}
-    // Important` arrives as a plain note and `:class:` comes back escaped.
-    expect(
-      roundTrip(":::{admonition} Important\n:class: danger\n\nBody.\n:::")
-    ).toBe("```{note}\n\\:class: danger\n\nBody.\n\n```");
+describe("admonitions become notices without losing anything", () => {
+  test.each([
+    ["generic admonition", "```{admonition}\nBody.\n```"],
+    ["titled note", "```{note} Custom Title\nBody.\n```"],
+    ["titled generic admonition", "```{admonition} Custom Title\nBody.\n```"],
+    ["bold title", "```{admonition} **Important note**\nBody.\n```"],
+    ["warning", "```{warning}\nBody.\n```"],
+    ["danger", "```{danger}\nBody.\n```"],
+    ["attention", "```{attention}\nBody.\n```"],
+    ["hint", "```{hint}\nBody.\n```"],
+    ["important", "```{important}\nBody.\n```"],
+    ["error", "```{error}\nBody.\n```"],
+    ["options", "```{note}\n:class: custom\n\nBody.\n```"],
+    ["several options", "```{note}\n:class: custom\n:name: label\n\nBody.\n```"],
+    ["titled, with options", "```{note} Title\n:class: custom\n\nBody.\n```"],
+    [
+      "the real case from doc-metas",
+      "```{admonition} Important\n:class: danger\n\nBody.\n```",
+    ],
+  ])("%s", (_name, source) => {
+    const expected = source.replace(/\n```$/, "\n\n```");
+    expect(roundTrip(source)).toBe(expected);
+    expect(roundTrip(expected)).toBe(expected);
   });
 
-  test("an untitled note escapes its option lines", () => {
-    // A backtick fence is normally left alone, but note/tip/caution/seealso
-    // without a title become Notice nodes, and `:class:` is then body text.
-    // Giving the directive a title keeps it a CodeFence and preserves options.
-    expect(roundTrip("```{note}\n:class: custom\n\nBody.\n```")).toBe(
-      "```{note}\n\\:class: custom\n\nBody.\n\n```"
+  test("an admonition whose body is only options keeps an empty body", () => {
+    // Lifting the options leaves nothing behind, and a notice with no content
+    // is filled in by ProseMirror with a checkbox list. The rule leaves an
+    // empty paragraph instead, which serializes as a blank line.
+    const once = roundTrip("```{note}\n:class: custom\n```");
+    expect(once).toBe("```{note}\n:class: custom\n\n\n```");
+    expect(once).not.toContain("[ ]");
+    expect(roundTrip(once)).toBe(once);
+  });
+
+  test("a colon-fenced admonition keeps its title and options", () => {
+    // How doc-metas actually wrote it. The colon fence is Outline's own notice
+    // syntax as well as MyST's, so this one is claimed on the way in and given
+    // back on a backtick fence — the spelling MyST reads either way.
+    expect(
+      roundTrip(":::{admonition} Important\n:class: danger\n\nBody.\n:::")
+    ).toBe("```{admonition} Important\n:class: danger\n\nBody.\n\n```");
+  });
+});
+
+/**
+ * Known limit, unchanged by the above: the colon container claims every `:::`
+ * fence, so a directive that is not an admonition is flattened into a plain
+ * note. `outline-sync` sidesteps this by moving directives onto backtick fences
+ * before pushing, which is the only spelling that survives for the ones Outline
+ * has no node for.
+ */
+describe("colon fences that are not admonitions", () => {
+  test("a dropdown is swallowed and becomes a note", () => {
+    expect(roundTrip(":::{dropdown} More\nHidden.\n:::")).toBe(
+      "```{note}\nHidden.\n\n```"
+    );
+  });
+});
+
+/**
+ * Notices stored before the node gained `directive`, `title` and `options` have
+ * none of them in their ProseMirror JSON. Every document already in the
+ * database is in that shape, so they have to keep serializing as they did.
+ */
+describe("notices stored before the new attributes", () => {
+  test.each([
+    ["info", "```{note}\nBody.\n\n```"],
+    ["tip", "```{tip}\nBody.\n\n```"],
+    ["warning", "```{caution}\nBody.\n\n```"],
+    ["success", "```{seealso}\nBody.\n\n```"],
+  ])("a %s notice carrying only a style", (style, expected) => {
+    const doc = schema.nodeFromJSON({
+      type: "doc",
+      content: [
+        {
+          type: "container_notice",
+          attrs: { style },
+          content: [
+            { type: "paragraph", content: [{ type: "text", text: "Body." }] },
+          ],
+        },
+      ],
+    });
+
+    expect(serializer.serialize(doc, { commonMark: true }).trim()).toBe(
+      expected
     );
   });
 });

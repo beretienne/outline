@@ -1323,6 +1323,18 @@ ${
   min-width: 0;
 }
 
+/* Present only when a MyST admonition carried a title, as in
+   \`\`\`{admonition} Important */
+.notice-block .notice-body {
+  flex-grow: 1;
+  min-width: 0;
+}
+
+.notice-block .notice-title {
+  font-weight: 600;
+  margin-bottom: 2px;
+}
+
 .${EditorStyleHelper.notice} {
   .${EditorStyleHelper.noticeIcon} {
     width: 24px;

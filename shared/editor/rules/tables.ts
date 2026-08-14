@@ -1,6 +1,6 @@
 import type MarkdownIt from "markdown-it";
 import { unescapeRawTableCell } from "../lib/markdown/tableCell";
-import { mystDirectiveName } from "./notices";
+import { parseNoticeInfo } from "./notices";
 
 const BR_TAG_REGEX = /<br\s*\/?>/gi;
 
@@ -97,7 +97,8 @@ function parseFencedCell(
   const firstLineEnd = source.indexOf("\n");
   const firstLineInfo = source.slice(3, firstLineEnd === -1 ? undefined : firstLineEnd);
   const isNoticeFence =
-    source.startsWith("```") && mystDirectiveName(firstLineInfo) !== undefined;
+    source.startsWith("```") &&
+    parseNoticeInfo(firstLineInfo, { allowBare: false }) !== undefined;
   const isRawFence =
     (source.startsWith("```") && !isNoticeFence) || source.startsWith("$$");
   const unescaped = isRawFence ? unescapeRawTableCell(source) : source;
