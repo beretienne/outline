@@ -310,6 +310,18 @@ describe("known limits", () => {
     expect(roundTrip(source)).not.toBe(source);
   });
 
+  test("a code block inside a callout never settles", () => {
+    // Both are fenced with ```, so the callout ends at the code block rather
+    // than wrapping it. Unlike the case above this one is reachable from the
+    // editor — a writer can drop a code block into a notice — and it degrades
+    // on every save rather than failing once, which is why MARKDOWN_README.md
+    // tells writers to put the code block after the callout instead.
+    const source = "```{note}\nBefore.\n\n```python\nprint(1)\n```\n\nAfter.\n```";
+    const once = roundTrip(source);
+    expect(once).not.toBe(source);
+    expect(roundTrip(once)).not.toBe(once);
+  });
+
   test("raw HTML survives as literal text, not as markup", () => {
     // The parser runs with html: false, so raw HTML is never turned into nodes
     // and simply passes through as text. That makes the html_image and
