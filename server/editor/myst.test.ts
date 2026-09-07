@@ -46,8 +46,11 @@ describe("preserved exactly", () => {
 
   /**
    * Directives Outline has no node for are preserved because CodeFence stores
-   * the fence info string as a free-form `language` attribute. They render as
-   * inert code blocks in Outline but come back as valid MyST.
+   * the fence info string as a `language` attribute. Ordinarily that attribute
+   * is cut to its first word so it cannot break the fence line, but an info
+   * string opening with a `{directive}` is kept whole, argument included, since
+   * `{figure} media/photo.png` without its path is not the same directive.
+   * They render as inert code blocks in Outline but come back as valid MyST.
    */
   test.each([
     ["figure", "```{figure} media/photo.png\n:width: 50%\n\nCaption.\n```"],

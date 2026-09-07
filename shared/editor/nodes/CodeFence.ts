@@ -66,18 +66,33 @@ const CODE_LINE_HEIGHT = 20;
 
 const collapseKey = new PluginKey<CollapseState>("collapse-code-block");
 
+/** A MyST directive at the start of an info string, e.g. `{figure}`. */
+const DIRECTIVE_INFO = /^\{[A-Za-z0-9_-]+\}/;
+
 /**
  * Reduce a language attribute or fence info string to a single safe token, so
  * it cannot break the fence line when written back to markdown.
  *
+ * A MyST directive is the one info string whose argument matters: in
+ * `{figure} media/photo.png` the path is the point, and cutting the string at
+ * the first space would lose it on every round-trip. Such a string is kept
+ * whole; only a newline could break the fence line, so whitespace runs are
+ * collapsed to a single space instead.
+ *
  * @param language - the language attribute or fence info string.
- * @returns the first whitespace-separated token with backticks removed.
+ * @returns the first whitespace-separated token with backticks removed, or the
+ * whole string with whitespace collapsed when it opens a MyST directive.
  */
 function sanitizeLanguage(language: string | null | undefined): string {
-  return String(language ?? "")
+  const safe = String(language ?? "")
     .replace(/`/g, "")
-    .trim()
-    .split(/\s/)[0];
+    .trim();
+
+  if (DIRECTIVE_INFO.test(safe)) {
+    return safe.replace(/\s+/g, " ");
+  }
+
+  return safe.split(/\s/)[0];
 }
 
 interface CollapseState {

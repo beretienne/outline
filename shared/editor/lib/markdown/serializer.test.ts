@@ -36,6 +36,35 @@ describe("code fences", () => {
     expect(doc?.firstChild?.attrs.language).toBe("•");
   });
 
+  it("keeps the argument of a MyST directive in the fence info string", () => {
+    const doc = parser.parse("```{figure} media/photo.png\ncontent\n```");
+
+    expect(doc?.firstChild?.type.name).toBe("code_block");
+    expect(doc?.firstChild?.attrs.language).toBe("{figure} media/photo.png");
+
+    const output = serializer.serialize(doc!);
+    expect(output.split("\n")[0]).toBe("```{figure} media/photo.png");
+  });
+
+  it("collapses whitespace in a directive info string to one line", () => {
+    const doc = Node.fromJSON(schema, {
+      type: "doc",
+      content: [
+        {
+          type: "code_block",
+          attrs: { language: "{figure}  media/photo.png\nnot a\tnew line" },
+          content: [{ type: "text", text: "content" }],
+        },
+      ],
+    });
+    const output = serializer.serialize(doc);
+
+    expect(output.split("\n")[0]).toBe(
+      "```{figure} media/photo.png not a new line"
+    );
+    expect(parser.parse(output)?.firstChild?.type.name).toBe("code_block");
+  });
+
   it("serializes an unsafe language attribute as a single safe token", () => {
     const doc = Node.fromJSON(schema, {
       type: "doc",
