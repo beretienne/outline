@@ -161,21 +161,47 @@ export function setCellAttrs(node: Node): Attrs {
         `min-width: ${Number(node.attrs.colwidth[0])}px;`;
     }
   }
-  if (Array.isArray(node.attrs.marks)) {
-    const backgroundMark = node.attrs.marks.find(
-      (mark: NodeAttrMark) =>
-        mark?.type === "background" &&
-        typeof mark.attrs?.color === "string" &&
-        validateColorHex(mark.attrs.color)
-    );
-    if (backgroundMark) {
-      const color = backgroundMark.attrs!.color as string;
-      attrs["data-bgcolor"] = color;
-      attrs.style =
-        ((attrs.style as string) ?? "") +
-        `--cell-bg-color: ${color}; --cell-text-color: ${readableColor(color)};`;
-    }
+  const color = cellBackgroundColor(node);
+  if (color) {
+    attrs["data-bgcolor"] = color;
+    attrs.style =
+      ((attrs.style as string) ?? "") +
+      `--cell-bg-color: ${color}; --cell-text-color: ${readableColor(color)};`;
   }
 
   return attrs;
+}
+
+/**
+ * Reads the background color a cell's `background` mark holds.
+ *
+ * @param node The table cell node
+ * @returns The color in hex notation, or null when the cell has no valid one
+ */
+export function cellBackgroundColor(node: Node): string | null {
+  if (!Array.isArray(node.attrs.marks)) {
+    return null;
+  }
+  const backgroundMark = node.attrs.marks.find(
+    (mark: NodeAttrMark) =>
+      mark?.type === "background" &&
+      typeof mark.attrs?.color === "string" &&
+      validateColorHex(mark.attrs.color)
+  );
+  return backgroundMark ? (backgroundMark.attrs!.color as string) : null;
+}
+
+/**
+ * Builds the `marks` attribute giving a cell a background color, as the
+ * Markdown parser needs it.
+ *
+ * @param color The color in hex notation, or nothing
+ * @returns The marks array, or undefined so the attribute keeps its default
+ */
+export function cellBackgroundMarks(
+  color: string | null | undefined
+): NodeAttrMark[] | undefined {
+  return color && validateColorHex(color)
+    ? [{ type: "background", attrs: { color } }]
+    : undefined;
 }

@@ -96,6 +96,7 @@ export function td(
     rowspan?: number;
     colwidth?: number[] | null;
     alignment?: string | null;
+    marks?: { type: string; attrs?: Record<string, unknown> }[];
   }
 ) {
   return schema.nodes.td.create(attrs ?? null, p(content));
@@ -115,6 +116,7 @@ export function th(
     rowspan?: number;
     colwidth?: number[] | null;
     alignment?: string | null;
+    marks?: { type: string; attrs?: Record<string, unknown> }[];
   }
 ) {
   return schema.nodes.th.create(attrs ?? null, p(content));

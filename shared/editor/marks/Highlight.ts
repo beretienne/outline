@@ -1,7 +1,13 @@
 import { parseToRgb, rgba } from "polished";
-import type { MarkSpec, MarkType } from "prosemirror-model";
+import type Token from "markdown-it/lib/token.mjs";
+import type {
+  Mark as ProsemirrorMark,
+  MarkSpec,
+  MarkType,
+} from "prosemirror-model";
 import { toggleMark } from "../commands/toggleMark";
 import { markInputRuleForPattern } from "../lib/markInputRule";
+import highlightHtml, { markOpenTag } from "../rules/highlight";
 import markRule from "../rules/mark";
 import Mark from "./Mark";
 import {
@@ -150,19 +156,34 @@ export default class Highlight extends Mark {
   }
 
   get rulePlugins() {
-    return [markRule({ delim: "==", mark: "highlight" })];
+    return [markRule({ delim: "==", mark: "highlight" }), highlightHtml];
   }
 
   toMarkdown() {
+    // `==text==` cannot carry a color, so a colored highlight is written as a
+    // `<mark>` tag with its color inline, which the parser reads back.
+    const colorOf = (mark: ProsemirrorMark): string | null =>
+      validateColorHex(mark.attrs.color ?? "") ? mark.attrs.color : null;
+
     return {
-      open: "==",
-      close: "==",
+      open: (_state: unknown, mark: ProsemirrorMark) => {
+        const color = colorOf(mark);
+        return color ? markOpenTag(color) : "==";
+      },
+      close: (_state: unknown, mark: ProsemirrorMark) =>
+        colorOf(mark) ? "</mark>" : "==",
       mixable: true,
       expelEnclosingWhitespace: true,
     };
   }
 
   parseMarkdown() {
-    return { mark: "highlight" };
+    return {
+      mark: "highlight",
+      getAttrs: (token: Token) => {
+        const color = token.attrGet("color");
+        return { color: color && validateColorHex(color) ? color : null };
+      },
+    };
   }
 }

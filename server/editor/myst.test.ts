@@ -169,7 +169,10 @@ describe("admonitions become notices without losing anything", () => {
     ["important", "```{important}\nBody.\n```"],
     ["error", "```{error}\nBody.\n```"],
     ["options", "```{note}\n:class: custom\n\nBody.\n```"],
-    ["several options", "```{note}\n:class: custom\n:name: label\n\nBody.\n```"],
+    [
+      "several options",
+      "```{note}\n:class: custom\n:name: label\n\nBody.\n```",
+    ],
     ["titled, with options", "```{note} Title\n:class: custom\n\nBody.\n```"],
     [
       "the real case from doc-metas",
@@ -215,7 +218,10 @@ describe("directives holding what a notice cannot", () => {
   test.each([
     ["a table", "```{note}\n| a | b |\n|---|---|\n| 1 | 2 |\n```"],
     ["a math block", "```{note}\nProse.\n\n$$\nx^2\n$$\n```"],
-    ["a nested colon directive", "````{note}\nProse.\n\n:::{tip}\nInner.\n:::\n````"],
+    [
+      "a nested colon directive",
+      "````{note}\nProse.\n\n:::{tip}\nInner.\n:::\n````",
+    ],
     ["a toggle block", "````{note}\nProse.\n\n+++\nHidden.\n+++\n````"],
   ])("stays a code fence rather than being emptied: %s", (_name, source) => {
     const once = roundTrip(source);
@@ -265,7 +271,9 @@ describe("known limits of the colon container", () => {
   test("a colon fence holding a table is emptied", () => {
     // The backtick path checks its contents before claiming; this one cannot,
     // because markdown-it-container decides from the info string alone.
-    expect(roundTrip(":::{note}\n| a | b |\n|---|---|\n| 1 | 2 |\n:::")).toBe("");
+    expect(roundTrip(":::{note}\n| a | b |\n|---|---|\n| 1 | 2 |\n:::")).toBe(
+      ""
+    );
   });
 });
 
@@ -315,7 +323,10 @@ describe("normalization is stable after one pass", () => {
     ["legacy notice", ":::info\nBody.\n:::"],
     ["nested list", "- one\n  - nested\n- two"],
     ["toggle block", "+++\nHidden body.\n+++"],
-    ["figure directive", "```{figure} media/photo.png\n:width: 50%\n\nCaption.\n```"],
+    [
+      "figure directive",
+      "```{figure} media/photo.png\n:width: 50%\n\nCaption.\n```",
+    ],
     ["mixed document", "# Title\n\n- one\n- two\n\n```{note}\nBody.\n```"],
   ])("%s", (_name, source) => {
     const once = roundTrip(source);
@@ -334,6 +345,28 @@ describe("normalization is stable after one pass", () => {
 describe("outside the MyST-safe profile", () => {
   test("highlight emits ==, for which MyST has no extension", () => {
     expect(roundTrip("==marked==")).toBe("==marked==");
+  });
+
+  /**
+   * `==` has no room for a color, so a colored highlight is written as a
+   * `<mark>` tag with the color as an inline style. MyST passes inline HTML
+   * through to the built manual, where the browser paints it in that color.
+   */
+  test("a colored highlight emits a mark tag carrying its color", () => {
+    const source =
+      'Some <mark style="background-color: #C8AFF0">marked</mark> prose.';
+    expect(roundTrip(source)).toBe(source);
+  });
+
+  /**
+   * A pipe table has nowhere to put cell styling, so a shaded cell opens with
+   * an HTML comment naming its color. MyST passes the comment through as raw
+   * HTML, so it is invisible in the built manual and the cell reads as plain.
+   */
+  test("a shaded table cell emits a background comment", () => {
+    const source =
+      "| <!-- bg:#fdea9bb3 -->a | b   |\n|-----|-----|\n| 1   | <!-- bg:#c8aff0b3 -->2 |";
+    expect(roundTrip(source)).toBe(source);
   });
 
   test("strikethrough emits ~~, which needs the strikethrough extension", () => {
@@ -372,7 +405,8 @@ describe("known limits", () => {
     // editor — a writer can drop a code block into a notice — and it degrades
     // on every save rather than failing once, which is why MARKDOWN_README.md
     // tells writers to put the code block after the callout instead.
-    const source = "```{note}\nBefore.\n\n```python\nprint(1)\n```\n\nAfter.\n```";
+    const source =
+      "```{note}\nBefore.\n\n```python\nprint(1)\n```\n\nAfter.\n```";
     const once = roundTrip(source);
     expect(once).not.toBe(source);
     expect(roundTrip(once)).not.toBe(once);

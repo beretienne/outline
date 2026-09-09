@@ -9,6 +9,7 @@ import { Plugin, PluginKey } from "prosemirror-state";
 import { Decoration, DecorationSet } from "prosemirror-view";
 import { TableMap } from "prosemirror-tables";
 import {
+  cellBackgroundMarks,
   getCellAttrs,
   isValidCellAlignment,
   isValidCellMarks,
@@ -78,6 +79,7 @@ export default class TableCell extends Node {
       block: "td",
       getAttrs: (tok: Token) => ({
         alignment: isValidCellAlignment(tok.info) ? tok.info : null,
+        marks: cellBackgroundMarks(tok.attrGet("bgcolor")),
       }),
     };
   }

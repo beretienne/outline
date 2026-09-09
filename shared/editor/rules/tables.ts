@@ -1,5 +1,8 @@
 import type MarkdownIt from "markdown-it";
-import { unescapeRawTableCell } from "../lib/markdown/tableCell";
+import {
+  CELL_BACKGROUND_REGEX,
+  unescapeRawTableCell,
+} from "../lib/markdown/tableCell";
 import { parseNoticeInfo } from "./notices";
 
 const BR_TAG_REGEX = /<br\s*\/?>/gi;
@@ -95,7 +98,10 @@ function parseFencedCell(
   // fences, which share the "```" marker with code fences), so markdown
   // unescapes it on re-parse.
   const firstLineEnd = source.indexOf("\n");
-  const firstLineInfo = source.slice(3, firstLineEnd === -1 ? undefined : firstLineEnd);
+  const firstLineInfo = source.slice(
+    3,
+    firstLineEnd === -1 ? undefined : firstLineEnd
+  );
   const isNoticeFence =
     source.startsWith("```") &&
     parseNoticeInfo(firstLineInfo, { allowBare: false }) !== undefined;
@@ -414,6 +420,21 @@ export default function markdownTables(md: MarkdownIt): void {
           );
           tokens.splice(i + 1, 0, new state.Token("paragraph_open", "p", 1));
           continue;
+        }
+
+        // A cell background travels as a comment at the start of the cell.
+        // Move it onto the cell token so it is not read as text.
+        const background = inlineToken.content.match(CELL_BACKGROUND_REGEX);
+        if (background) {
+          tokens[i].attrSet("bgcolor", background[1]);
+          inlineToken.content = inlineToken.content.slice(background[0].length);
+          const first = inlineToken.children?.[0];
+          if (first?.type === "text") {
+            first.content = first.content.replace(CELL_BACKGROUND_REGEX, "");
+            if (first.content === "") {
+              inlineToken.children?.shift();
+            }
+          }
         }
 
         // Reconstruct notice, toggle, code & math fences that were serialized

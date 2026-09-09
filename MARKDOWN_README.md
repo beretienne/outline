@@ -67,6 +67,17 @@ its own, so in the manual the equals signs show up as text:
 **Reach for bold instead.** It carries the same "look here" and appears in every
 output.
 
+**Picking a highlight colour** from the toolbar is a different story. A coloured
+highlight is stored as an HTML `<mark>` tag carrying its colour, and the HTML
+manual renders that as a real highlight in the same colour. A PDF build drops
+the tag and prints the text plain. The colour also survives a sync in both
+directions, so the shade you chose in Outline is still there after the page
+has been pulled and pushed:
+
+```markdown
+The <mark style="background-color: #C8AFF0">reference point</mark> is at the centre.
+```
+
 ### Underline — Ctrl+U, or typing `__text__`
 
 Underline is written as `__text__`, and Markdown has long read two underscores
@@ -195,6 +206,17 @@ qcam-calibrate --section 4
 ### Tables, bullet lists, numbered lists, checkboxes, quotes, dividers
 
 All come through perfectly.
+
+**Shading a table cell** stays in Outline, and comes back after a sync. A
+shaded cell opens with a small HTML comment naming its colour, which the manual
+does not show — the cell simply reads as plain:
+
+```markdown
+| <!-- bg:#fdea9bb3 -->Status | Owner |
+```
+
+The colour goes wherever the cell goes, so editing the cell's text keeps it.
+Deleting the comment is how you clear the shading from the source side.
 
 ### Maths
 

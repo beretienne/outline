@@ -3,6 +3,9 @@
 // https://raw.githubusercontent.com/ProseMirror/prosemirror-markdown/master/src/to_markdown.js
 // forked for table support
 
+import { cellBackgroundColor } from "../table";
+import { cellBackgroundMarker } from "./tableCell";
+
 /** Options that control how a ProseMirror document is serialized to Markdown. */
 type Options = {
   /** Whether list items are rendered without blank lines between them. */
@@ -516,9 +519,10 @@ export class MarkdownSerializerState {
           }
         });
 
-        const content = cellState.out
-          .replace(/^\n+|\n+$/g, "")
-          .replace(/\n/g, "<br>");
+        const background = cellBackgroundColor(cell);
+        const content =
+          (background ? cellBackgroundMarker(background) : "") +
+          cellState.out.replace(/^\n+|\n+$/g, "").replace(/\n/g, "<br>");
         this.append(content);
 
         // Pad to column width

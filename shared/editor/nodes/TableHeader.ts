@@ -8,6 +8,7 @@ import { isInTable, moveTableColumn, TableMap } from "prosemirror-tables";
 import { addColumnBefore, selectColumn } from "../commands/table";
 import { isMobile } from "../../utils/browser";
 import {
+  cellBackgroundMarks,
   getCellAttrs,
   isValidCellAlignment,
   isValidCellMarks,
@@ -245,6 +246,7 @@ export default class TableHeader extends Node {
       block: "th",
       getAttrs: (tok: Token) => ({
         alignment: isValidCellAlignment(tok.info) ? tok.info : null,
+        marks: cellBackgroundMarks(tok.attrGet("bgcolor")),
       }),
     };
   }
