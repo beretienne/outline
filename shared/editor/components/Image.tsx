@@ -93,6 +93,17 @@ const Image = (props: Props) => {
   const [naturalWidth, setNaturalWidth] = React.useState(node.attrs.width);
   const [naturalHeight, setNaturalHeight] = React.useState(node.attrs.height);
   const lastTapTimeRef = React.useRef(0);
+
+  // The ProseMirror NodeView backing this component is reused, not remounted,
+  // when `src` changes on an existing image node (e.g. Replace, or any other
+  // edit that swaps the attribute in place) — so `error`/`loaded` would
+  // otherwise keep showing a stale result for the previous URL forever, only
+  // clearing on a full page reload that happens to remount the React tree.
+  React.useEffect(() => {
+    setError(false);
+    setLoaded(false);
+  }, [src]);
+
   const ref = React.useRef<HTMLDivElement>(null);
   const { width, height, handlePointerDown, handleDoubleClick, dragging } =
     useDragResize({
