@@ -1325,12 +1325,12 @@ ${
 
 /* Present only when a MyST admonition carried a title, as in
    \`\`\`{admonition} Important */
-.notice-block .notice-body {
+.${EditorStyleHelper.notice} .${EditorStyleHelper.noticeBody} {
   flex-grow: 1;
   min-width: 0;
 }
 
-.notice-block .notice-title {
+.${EditorStyleHelper.notice} .${EditorStyleHelper.noticeTitle} {
   font-weight: 600;
   margin-bottom: 2px;
 }

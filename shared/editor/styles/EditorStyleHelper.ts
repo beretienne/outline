@@ -92,6 +92,13 @@ export class EditorStyleHelper {
   /** Notice block content area */
   static readonly noticeContent = "content";
 
+  /** Wrapper around a notice's title and content, present only when the
+   * notice carries a title (e.g. arrived as `{admonition} Important`). */
+  static readonly noticeBody = "notice-body";
+
+  /** A notice's title, drawn above its content. */
+  static readonly noticeTitle = "notice-title";
+
   // Suggestions
 
   /** Trigger character and search term while a suggestion menu is open */

@@ -170,8 +170,8 @@ export default class Notice extends Node {
           title
             ? [
                 "div",
-                { class: "notice-body" },
-                ["div", { class: "notice-title" }, title],
+                { class: EditorStyleHelper.noticeBody },
+                ["div", { class: EditorStyleHelper.noticeTitle }, title],
                 content,
               ]
             : content,
@@ -223,6 +223,7 @@ export default class Notice extends Node {
 
   component = (props: ComponentProps) => {
     const { node } = props;
+    const title: string = node.attrs.title || "";
 
     let icon;
     if (node.attrs.style === NoticeTypes.Tip) {
@@ -235,15 +236,30 @@ export default class Notice extends Node {
       icon = <InfoIcon />;
     }
 
+    const content = (
+      <div className={EditorStyleHelper.noticeContent} ref={props.contentRef} />
+    );
+
     return (
       <div className={`${EditorStyleHelper.notice} ${node.attrs.style}`}>
         <div className={EditorStyleHelper.noticeIcon} contentEditable={false}>
           {icon}
         </div>
-        <div
-          className={EditorStyleHelper.noticeContent}
-          ref={props.contentRef}
-        />
+        {title ? (
+          <div className={EditorStyleHelper.noticeBody}>
+            {/* Read-only: the title is a MyST directive argument, not
+                ProseMirror content, so it is not yet editable in place. */}
+            <div
+              className={EditorStyleHelper.noticeTitle}
+              contentEditable={false}
+            >
+              {title}
+            </div>
+            {content}
+          </div>
+        ) : (
+          content
+        )}
       </div>
     );
   };
@@ -285,7 +301,8 @@ export default class Notice extends Node {
         // warning style serializes to, so recording it would leave two ways to
         // spell the same node and break `parse(serialize(doc)) === doc`.
         const directive =
-          parsed?.braced && parsed.directive !== noticeTypeToMystDirective[style]
+          parsed?.braced &&
+          parsed.directive !== noticeTypeToMystDirective[style]
             ? parsed.directive
             : null;
 
