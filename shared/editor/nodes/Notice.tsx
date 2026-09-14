@@ -1,7 +1,7 @@
 import type Token from "markdown-it/lib/token.mjs";
 import { WarningIcon, InfoIcon, StarredIcon, DoneIcon } from "outline-icons";
 import { wrappingInputRule } from "prosemirror-inputrules";
-import type { FocusEvent, KeyboardEvent, MouseEvent } from "react";
+import type { FocusEvent, KeyboardEvent } from "react";
 import type {
   NodeSpec,
   Node as ProsemirrorNode,
@@ -279,6 +279,26 @@ export default class Notice extends Node {
   };
 
   /**
+   * Parks ProseMirror's own selection inside this notice the moment the
+   * title is about to receive focus, so anything reading `state.selection`
+   * — the toolbar's style picker included — resolves to this notice rather
+   * than wherever the selection last happened to be. There is no document
+   * position inside the title field itself for ProseMirror to land on, and
+   * nothing here ever moves focus there on purpose (no `view.focus()`):
+   * dispatching on mousedown, before the browser's own default click
+   * handling actually moves focus to the field, briefly syncs ProseMirror's
+   * DOM selection to this position and then leaves it there, since nothing
+   * further gets dispatched while the title has focus — right up until the
+   * native click completes and focus lands in the field as normal.
+   */
+  handleTitleMouseDown =
+    ({ getPos, view }: ComponentProps) =>
+    () => {
+      const $pos = view.state.doc.resolve(getPos() + 1);
+      view.dispatch(view.state.tr.setSelection(TextSelection.near($pos)));
+    };
+
+  /**
    * Pressing Enter while editing the title moves the cursor into the
    * notice's own body instead of inserting a line break — a title is a
    * single line, the same reasoning Image's caption field already applies
@@ -309,15 +329,6 @@ export default class Notice extends Node {
       );
       view.focus();
     };
-
-  /**
-   * Same reasoning as the keydown stop above: a click or drag-select inside
-   * the title field is a real DOM position with no ProseMirror equivalent,
-   * so it must never reach ProseMirror's own selection handling either.
-   */
-  handleTitleMouseDown = (event: MouseEvent<HTMLDivElement>) => {
-    event.stopPropagation();
-  };
 
   /**
    * Commits an edited title on blur, the same pattern Image's own caption
@@ -367,15 +378,24 @@ export default class Notice extends Node {
         </div>
         {title ? (
           <div className={EditorStyleHelper.noticeBody}>
-            <div
-              className={EditorStyleHelper.noticeTitle}
-              contentEditable={props.isEditable}
-              suppressContentEditableWarning
-              onBlur={this.handleTitleBlur(props)}
-              onKeyDown={this.handleTitleKeyDown(props)}
-              onMouseDown={this.handleTitleMouseDown}
-            >
-              {title}
+            {/* contentEditable is not an event boundary — nesting `true`
+                directly inside ProseMirror's own already-editable root does
+                not carve out a separate island; browsers treat the whole
+                region as one continuous editable surface either way. This
+                outer div's `false` is what actually isolates the title from
+                it, the same way the icon div above does; the real field is
+                the `true` nested one story down. */}
+            <div contentEditable={false}>
+              <div
+                className={EditorStyleHelper.noticeTitle}
+                contentEditable={props.isEditable}
+                suppressContentEditableWarning
+                onMouseDown={this.handleTitleMouseDown(props)}
+                onBlur={this.handleTitleBlur(props)}
+                onKeyDown={this.handleTitleKeyDown(props)}
+              >
+                {title}
+              </div>
             </div>
             {content}
           </div>
