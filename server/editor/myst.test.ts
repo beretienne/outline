@@ -1,9 +1,16 @@
 import { parser, schema, serializer } from ".";
 
 /**
- * Round-trips markdown through the same path the API uses: `documents.update`
- * parses the incoming text, and `presentDocument` renders it back through
- * `DocumentHelper.toMarkdown`, which serializes with `commonMark: true`.
+ * Round-trips markdown through the parser and a `commonMark: true`
+ * serializer — the shape an export or an outline-sync pull gets back, via
+ * routes such as `documents.export` that pass that flag to
+ * `DocumentHelper.toMarkdown`.
+ *
+ * `documents.info`, the general-purpose read every other API caller and the
+ * realtime websocket feed go through, does not set the flag: `presentDocument`
+ * calls `toMarkdown` without it, so a hard break there still serializes as a
+ * literal backslash-n rather than a trailing double space. Whether that gap
+ * matters depends on which endpoint a given sync tool actually pulls from.
  */
 function roundTrip(text: string): string {
   const node = parser.parse(text);
