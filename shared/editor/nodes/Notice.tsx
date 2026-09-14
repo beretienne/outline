@@ -1,7 +1,7 @@
 import type Token from "markdown-it/lib/token.mjs";
 import { WarningIcon, InfoIcon, StarredIcon, DoneIcon } from "outline-icons";
 import { wrappingInputRule } from "prosemirror-inputrules";
-import type { FocusEvent, KeyboardEvent } from "react";
+import type { FocusEvent, KeyboardEvent, MouseEvent } from "react";
 import type {
   NodeSpec,
   Node as ProsemirrorNode,
@@ -287,6 +287,18 @@ export default class Notice extends Node {
   handleTitleKeyDown =
     ({ getPos, view }: ComponentProps) =>
     (event: KeyboardEvent<HTMLDivElement>) => {
+      // The title div sits inside the same contentEditable region ProseMirror
+      // manages, but is not part of its document model — there is no
+      // position inside it for ProseMirror to resolve. Left unstopped, a key
+      // like Backspace still bubbles up to ProseMirror's own keymap, which
+      // then acts on whatever position its selection last happened to be at
+      // instead of where the cursor visually is: a genuine, observed case
+      // joined this whole notice into the one before it and dropped its own
+      // title, deleting a single character in the field. Every key is
+      // stopped here so the native field handles all of them — typing,
+      // backspace, arrows — and only Enter additionally gets its default
+      // (a literal line break in the field) prevented and redirected.
+      event.stopPropagation();
       if (event.key !== "Enter") {
         return;
       }
@@ -297,6 +309,15 @@ export default class Notice extends Node {
       );
       view.focus();
     };
+
+  /**
+   * Same reasoning as the keydown stop above: a click or drag-select inside
+   * the title field is a real DOM position with no ProseMirror equivalent,
+   * so it must never reach ProseMirror's own selection handling either.
+   */
+  handleTitleMouseDown = (event: MouseEvent<HTMLDivElement>) => {
+    event.stopPropagation();
+  };
 
   /**
    * Commits an edited title on blur, the same pattern Image's own caption
@@ -352,6 +373,7 @@ export default class Notice extends Node {
               suppressContentEditableWarning
               onBlur={this.handleTitleBlur(props)}
               onKeyDown={this.handleTitleKeyDown(props)}
+              onMouseDown={this.handleTitleMouseDown}
             >
               {title}
             </div>
