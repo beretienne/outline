@@ -1852,6 +1852,24 @@ mark {
   }
 }
 
+/* A directive Outline has no node for keeps its whole fence info string —
+   {ifconfig} Class == 'A', say — in the language attribute, so it can be
+   written back out unchanged. Nothing else about the code block ever shows
+   that string: syntax highlighting silently no-ops on it, there is no
+   language-picker UI displaying it. Without this a block like that reads as
+   anonymous grey text with no indication of what it actually is. */
+.${EditorStyleHelper.codeBlock}[data-language^="{"] {
+  &::before {
+    content: attr(data-language);
+    display: block;
+    margin-bottom: 4px;
+    font-family: ${props.theme.fontFamilyMono};
+    font-size: 12px;
+    font-weight: 600;
+    color: ${props.theme.textSecondary};
+  }
+}
+
 .${EditorStyleHelper.codeBlock}[data-language=mermaid],
 .${EditorStyleHelper.codeBlock}[data-language=mermaidjs] {
   ${
