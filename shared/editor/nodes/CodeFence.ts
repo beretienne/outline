@@ -54,6 +54,7 @@ import {
 import { EditorStyleHelper } from "../styles/EditorStyleHelper";
 import { getMarkRange } from "../queries/getMarkRange";
 import { isInCode } from "../queries/isInCode";
+import codeFenceOptionsRule from "../rules/codeFenceOptions";
 import Node from "./Node";
 
 const DEFAULT_LANGUAGE = "javascript";
@@ -67,7 +68,7 @@ const CODE_LINE_HEIGHT = 20;
 const collapseKey = new PluginKey<CollapseState>("collapse-code-block");
 
 /** A MyST directive at the start of an info string, e.g. `{figure}`. */
-const DIRECTIVE_INFO = /^\{[A-Za-z0-9_-]+\}/;
+export const DIRECTIVE_INFO = /^\{[A-Za-z0-9_-]+\}/;
 
 /**
  * Reduce a language attribute or fence info string to a single safe token, so
@@ -252,6 +253,10 @@ export default class CodeFence extends Node<CodeFenceOptions> {
     return "code_fence";
   }
 
+  get rulePlugins() {
+    return [codeFenceOptionsRule];
+  }
+
   get schema(): NodeSpec {
     return {
       attrs: {
@@ -282,6 +287,14 @@ export default class CodeFence extends Node<CodeFenceOptions> {
         fenceLength: {
           default: 3,
           validate: "number",
+        },
+        // A directive Outline has no node for keeps its own MyST option
+        // lines here, verbatim — `:class: danger`, say — lifted off the body
+        // so they read as metadata rather than a stray line of prose.
+        // Not shown yet; kept for a future editing surface to use.
+        options: {
+          default: "",
+          validate: "string",
         },
       },
       content: "text*",
@@ -848,6 +861,11 @@ export default class CodeFence extends Node<CodeFenceOptions> {
     const fence = fenceChar.repeat(fenceLength);
 
     state.write(fence + sanitizeLanguage(node.attrs.language) + "\n");
+    if (node.attrs.options) {
+      // MyST wants a blank line between the option block and the body,
+      // matching Notice's own convention for the same thing.
+      state.write(`${node.attrs.options}\n\n`);
+    }
     state.text(content, false);
     state.ensureNewLine();
     state.write(fence);
@@ -865,6 +883,7 @@ export default class CodeFence extends Node<CodeFenceOptions> {
         language: sanitizeLanguage(tok.info),
         fenceChar: tok.markup?.[0] || "`",
         fenceLength: tok.markup?.length || 3,
+        options: tok.meta?.options || "",
       }),
       noCloseToken: true,
     };

@@ -26,7 +26,7 @@ export const MYST_ADMONITIONS = [
 const OUTLINE_NOTICE_STYLES = ["info", "success", "tip", "warning"];
 
 /** A MyST option line, e.g. `:class: danger`. */
-const OPTION_LINE = /^:[A-Za-z0-9_-]+:(?:\s|$)/;
+export const OPTION_LINE = /^:[A-Za-z0-9_-]+:(?:\s|$)/;
 
 /**
  * Block tokens a notice node has nowhere to put.

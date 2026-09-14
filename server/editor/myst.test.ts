@@ -351,6 +351,58 @@ describe("colon-fenced directives with no notice claim it", () => {
 });
 
 /**
+ * A directive Outline has no node for still keeps its own option lines out
+ * of the body, the same way a claimed admonition already does — metadata,
+ * not prose, lifted onto the node rather than shown as a stray line of
+ * text. Not editable yet; the point for now is that the data survives
+ * structured rather than folded into the opaque body text, ready for an
+ * editing surface later.
+ */
+describe("an unclaimed directive keeps its own option lines out of the body", () => {
+  test.each([
+    [
+      "one option line",
+      "```{ifconfig} Class == 'A'\n:some-option: value\n\nBody text.\n```",
+    ],
+    [
+      "several option lines",
+      "```{ifconfig} Class == 'A'\n:opt1: a\n:opt2: b\n\nBody text.\n```",
+    ],
+    [
+      "no options at all, unaffected",
+      "```{ifconfig} Class == 'A'\nBody text.\n```",
+    ],
+  ])("%s", (_name, source) => {
+    const once = roundTrip(source);
+    expect(once).toBe(source);
+    expect(roundTrip(once)).toBe(once);
+  });
+
+  test("an options-only body is lifted whole, leaving an empty body rather than losing anything", () => {
+    const source = "```{ifconfig} Class == 'A'\n:only-option: value\n```";
+    const once = roundTrip(source);
+    expect(once).toContain(":only-option: value");
+    expect(roundTrip(once)).toBe(once);
+  });
+
+  test("a normal code block is never mistaken for a directive with options", () => {
+    // The outer guard is the fence's own info string, not what the body
+    // looks like — "python" never matches the {directive} shape, so a code
+    // sample that happens to contain a line shaped like an option is left
+    // exactly as written.
+    const source =
+      "```python\n:this-looks-like-an-option: but-is-code\nprint(1)\n```";
+    expect(roundTrip(source)).toBe(source);
+  });
+
+  test("a real admonition's own options are unaffected — notices.ts still owns those", () => {
+    expect(roundTrip("```{note}\n:class: custom\n\nBody.\n```")).toBe(
+      "```{note}\n:class: custom\n\nBody.\n\n```"
+    );
+  });
+});
+
+/**
  * `{figure-md}` and `{figure}` become a real Figure node — an ordinary,
  * editable image with its caption in the same `alt` field every other
  * image already uses — instead of an inert code block, when the body is
