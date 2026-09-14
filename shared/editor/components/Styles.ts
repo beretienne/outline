@@ -1323,8 +1323,6 @@ ${
   min-width: 0;
 }
 
-/* Present only when a MyST admonition carried a title, as in
-   \`\`\`{admonition} Important */
 .${EditorStyleHelper.notice} .${EditorStyleHelper.noticeBody} {
   flex-grow: 1;
   min-width: 0;
@@ -1333,6 +1331,24 @@ ${
 .${EditorStyleHelper.notice} .${EditorStyleHelper.noticeTitle} {
   font-weight: 600;
   margin-bottom: 2px;
+
+  &:empty:not(:focus) {
+    display: none;
+  }
+
+  &:empty::before {
+    color: ${props.theme.placeholder};
+    content: attr(data-placeholder);
+    font-weight: 400;
+    pointer-events: none;
+  }
+}
+
+/* A title-less notice keeps its (empty, placeholder-only) title field out of
+   the way until the notice is hovered or the field itself is focused, so a
+   title can always be added back after being cleared. */
+.${EditorStyleHelper.notice}:hover .${EditorStyleHelper.noticeTitle}:empty {
+  display: block;
 }
 
 .${EditorStyleHelper.notice} {

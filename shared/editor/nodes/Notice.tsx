@@ -1,3 +1,4 @@
+import { t } from "i18next";
 import type Token from "markdown-it/lib/token.mjs";
 import { WarningIcon, InfoIcon, StarredIcon, DoneIcon } from "outline-icons";
 import { wrappingInputRule } from "prosemirror-inputrules";
@@ -376,32 +377,36 @@ export default class Notice extends Node {
         <div className={EditorStyleHelper.noticeIcon} contentEditable={false}>
           {icon}
         </div>
-        {title ? (
-          <div className={EditorStyleHelper.noticeBody}>
-            {/* contentEditable is not an event boundary — nesting `true`
-                directly inside ProseMirror's own already-editable root does
-                not carve out a separate island; browsers treat the whole
-                region as one continuous editable surface either way. This
-                outer div's `false` is what actually isolates the title from
-                it, the same way the icon div above does; the real field is
-                the `true` nested one story down. */}
-            <div contentEditable={false}>
-              <div
-                className={EditorStyleHelper.noticeTitle}
-                contentEditable={props.isEditable}
-                suppressContentEditableWarning
-                onMouseDown={this.handleTitleMouseDown(props)}
-                onBlur={this.handleTitleBlur(props)}
-                onKeyDown={this.handleTitleKeyDown(props)}
-              >
-                {title}
-              </div>
+        <div className={EditorStyleHelper.noticeBody}>
+          {/* Always rendered, not conditional on `title` — clearing every
+              character used to make this div disappear along with it, and
+              with no field left to click into there was no way to type a
+              new one back in. CSS hides it while empty and neither focused
+              nor hovered, the same way Image's own caption field hides an
+              empty one, rather than this component deciding visibility.
+
+              contentEditable is not an event boundary on its own — nesting
+              `true` directly inside ProseMirror's already-editable root does
+              not carve out a separate island; browsers treat the whole
+              region as one continuous editable surface either way. This
+              outer div's `false` is what actually isolates the title from
+              it, the same way the icon div above does; the real field is
+              the `true` nested one story down. */}
+          <div contentEditable={false}>
+            <div
+              className={EditorStyleHelper.noticeTitle}
+              contentEditable={props.isEditable}
+              suppressContentEditableWarning
+              data-placeholder={t("Add a title")}
+              onMouseDown={this.handleTitleMouseDown(props)}
+              onBlur={this.handleTitleBlur(props)}
+              onKeyDown={this.handleTitleKeyDown(props)}
+            >
+              {title}
             </div>
-            {content}
           </div>
-        ) : (
-          content
-        )}
+          {content}
+        </div>
       </div>
     );
   };
