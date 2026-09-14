@@ -41,14 +41,24 @@ function requiredFenceLength(node: ProsemirrorNode): number {
   node.descendants((child) => {
     if (child.type.name === "code_fence" || child.type.name === "code_block") {
       const fenceChar: string = child.attrs.fenceChar || "`";
-      if (fenceChar === "`") {
-        const contentRun = longestRun(child.textContent, "`");
-        const childLength = Math.max(
-          child.attrs.fenceLength || DEFAULT_FENCE_LENGTH,
-          contentRun >= 3 ? contentRun + 1 : DEFAULT_FENCE_LENGTH
-        );
-        innerMax = Math.max(innerMax, childLength);
-      }
+      // A colon-fenced (preserved, unclaimed) child never collides on its own
+      // wrapper — different character — but its raw content is opaque text
+      // that can itself hold a genuine backtick run (an `{ifconfig}` block
+      // documenting a code snippet, say). That run still ends up sitting
+      // inside this notice once everything is flattened to one markdown
+      // string, so a backtick-fenced ancestor has to clear it regardless of
+      // what character wraps it.
+      const contentRun = longestRun(child.textContent, "`");
+      const childLength =
+        fenceChar === "`"
+          ? Math.max(
+              child.attrs.fenceLength || DEFAULT_FENCE_LENGTH,
+              contentRun >= 3 ? contentRun + 1 : DEFAULT_FENCE_LENGTH
+            )
+          : contentRun >= 3
+            ? contentRun + 1
+            : 0;
+      innerMax = Math.max(innerMax, childLength);
       return false;
     }
     if (child.type.name === "figure") {

@@ -671,6 +671,21 @@ describe("known limits", () => {
     expect(roundTrip(once)).toBe(once);
   });
 
+  test("an admonition grows past a backtick run hiding inside an unclaimed colon-fenced child", () => {
+    // {ifconfig} isn't a directive Outline claims, so it stays a code_fence on
+    // its own colon wrapper — no collision with the admonition's own
+    // backticks there. But its raw, opaque body can itself hold a genuine
+    // backtick code example, and that run still ends up nested inside the
+    // admonition once everything is one markdown string. The admonition has
+    // to clear it too, not just whatever wraps it directly.
+    const source =
+      ":::{admonition} Title\n:::{ifconfig} Class == 'A'\n```python\nprint(1)\n```\n:::\n:::";
+    const once = roundTrip(source);
+    expect(once).toContain("print(1)");
+    expect(once).toContain("Class == 'A'");
+    expect(roundTrip(once)).toBe(once);
+  });
+
   test("raw HTML survives as literal text, not as markup", () => {
     // The parser runs with html: false, so raw HTML is never turned into nodes
     // and simply passes through as text. That makes the html_image and
