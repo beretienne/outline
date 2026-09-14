@@ -26,7 +26,15 @@ describe("code fences", () => {
     const output = serializer.serialize(doc);
 
     expect(output.startsWith("````")).toBe(true);
-    expect(parser.parse(output)?.toJSON()).toEqual(doc.toJSON());
+
+    // The reparsed doc's `fenceLength` (4) now correctly reflects the fence
+    // actually written, where the hand-built original above left it at the
+    // schema default (3) by never setting it — so a plain toJSON comparison
+    // against the original would fail on that one attribute even though the
+    // content round-trips exactly.
+    const reparsed = parser.parse(output);
+    expect(reparsed?.textContent).toBe(doc.textContent);
+    expect(reparsed?.firstChild?.attrs.fenceLength).toBe(4);
   });
 
   it("round trips a code block followed by other content", () => {

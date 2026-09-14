@@ -1,4 +1,5 @@
 import type MarkdownIt from "markdown-it";
+import type StateBlock from "markdown-it/lib/rules_block/state_block.mjs";
 import type Token from "markdown-it/lib/token.mjs";
 import customFence from "markdown-it-container";
 
@@ -198,6 +199,126 @@ function noticeOptions(md: MarkdownIt): void {
   });
 }
 
+// A `:::` run shorter than this is not a fence at all, matching both
+// markdown-it-container's own threshold and MyST's backtick fences.
+const MIN_COLON_MARKERS = 3;
+const COLON_MARKER_CODE = ":".charCodeAt(0);
+
+/**
+ * Give a colon-fenced directive Outline has no node for the same byte-exact
+ * survival a backtick fence already gets, instead of letting
+ * `markdown-it-container` claim it as a notice.
+ *
+ * `markdown-it-container` (registered as `container_notice` below) decides
+ * from the info string alone, before there is any content to look at — every
+ * `:::` fence becomes a notice attempt regardless of directive name. For a
+ * real admonition that is exactly right. For anything else — `:::{glossary}`,
+ * `::::{ifconfig} Class == 'A'` wrapping a table, `:::{grid} 2` — the body is
+ * something a notice cannot hold, so the block comes back mangled into a
+ * stray `{note}` or, worse, is dropped from the document entirely.
+ *
+ * Registered immediately before `container_notice`, this rule reads the same
+ * info string first. A recognized admonition is left alone — returning
+ * `false` hands the line straight to `container_notice`, unchanged from
+ * today. Anything else is read as one opaque block, the same bargain the
+ * backtick path already makes for a directive Outline has no node for: the
+ * fence survives as an inert `code_fence`, complete with the original marker
+ * character and run length, so it renders as a grey code block and writes
+ * itself back out exactly as written.
+ *
+ * @param md - the markdown-it instance to register the rule on.
+ */
+function unclaimedColonFence(md: MarkdownIt): void {
+  md.block.ruler.before(
+    "container_notice",
+    "colon-fence-passthrough",
+    (
+      state: StateBlock,
+      startLine: number,
+      endLine: number,
+      silent: boolean
+    ): boolean => {
+      let pos = state.bMarks[startLine] + state.tShift[startLine];
+      const max = state.eMarks[startLine];
+
+      if (state.sCount[startLine] - state.blkIndent >= 4) {
+        return false;
+      }
+      if (state.src.charCodeAt(pos) !== COLON_MARKER_CODE) {
+        return false;
+      }
+
+      const openStart = pos;
+      pos = state.skipChars(pos, COLON_MARKER_CODE);
+      const markerLength = pos - openStart;
+      if (markerLength < MIN_COLON_MARKERS) {
+        return false;
+      }
+
+      const markup = state.src.slice(openStart, pos);
+      const params = state.src.slice(pos, max);
+      if (parseNoticeInfo(params, { allowBare: true })) {
+        return false;
+      }
+
+      if (silent) {
+        return true;
+      }
+
+      let nextLine = startLine;
+      let haveEndMarker = false;
+      for (;;) {
+        nextLine++;
+        if (nextLine >= endLine) {
+          // Unclosed at end of document or of the enclosing block; auto-close.
+          break;
+        }
+
+        let closePos = state.bMarks[nextLine] + state.tShift[nextLine];
+        const closeMax = state.eMarks[nextLine];
+
+        if (closePos < closeMax && state.sCount[nextLine] < state.blkIndent) {
+          break;
+        }
+        if (state.src.charCodeAt(closePos) !== COLON_MARKER_CODE) {
+          continue;
+        }
+        if (state.sCount[nextLine] - state.blkIndent >= 4) {
+          continue;
+        }
+
+        const closeStart = closePos;
+        closePos = state.skipChars(closePos, COLON_MARKER_CODE);
+        // A closing fence must be at least as long as the one that opened it.
+        if (closePos - closeStart < markerLength) {
+          continue;
+        }
+        closePos = state.skipSpaces(closePos);
+        if (closePos < closeMax) {
+          continue;
+        }
+
+        haveEndMarker = true;
+        break;
+      }
+
+      const indent = state.sCount[startLine];
+      state.line = nextLine + (haveEndMarker ? 1 : 0);
+
+      // Reuses the "fence" token type CodeFence already parses backtick and
+      // tilde fences from, so it needs no separate wiring into the parser.
+      const token = state.push("fence", "code", 0);
+      token.info = params;
+      token.content = state.getLines(startLine + 1, nextLine, indent, true);
+      token.markup = markup;
+      token.map = [startLine, state.line];
+
+      return true;
+    },
+    { alt: ["paragraph", "reference", "blockquote", "list"] }
+  );
+}
+
 export default function notice(md: MarkdownIt): void {
   customFence(md, "notice", {
     marker: ":",
@@ -214,6 +335,10 @@ export default function notice(md: MarkdownIt): void {
       }
     },
   });
+
+  // Must run after customFence above: it inserts itself immediately before
+  // the "container_notice" rule that call registers.
+  unclaimedColonFence(md);
 
   mystNoticeFences(md);
   noticeOptions(md);

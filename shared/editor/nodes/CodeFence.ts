@@ -95,6 +95,24 @@ function sanitizeLanguage(language: string | null | undefined): string {
   return safe.split(/\s/)[0];
 }
 
+/**
+ * The longest run of a single character in a string.
+ *
+ * @param text - the text to scan.
+ * @param char - the single character to count runs of.
+ * @returns the length of the longest consecutive run of `char` in `text`, or
+ * 0 if it does not occur.
+ */
+function longestRun(text: string, char: string): number {
+  let longest = 0;
+  let current = 0;
+  for (const ch of text) {
+    current = ch === char ? current + 1 : 0;
+    longest = Math.max(longest, current);
+  }
+  return longest;
+}
+
 interface CollapseState {
   /** Positions of code blocks taller than COLLAPSE_HEIGHT_RATIO of the viewport. */
   tallBlocks: Set<number>;
@@ -247,6 +265,24 @@ export default class CodeFence extends Node<CodeFenceOptions> {
           default: false,
           validate: "boolean",
         },
+        // The character the fence this block arrived on was written with.
+        // Only ` (backtick), ~ (tilde) and : (colon, a MyST directive Outline
+        // has no node for) are ever produced by the parser; anything typed in
+        // the editor is always backtick. Kept so a colon-fenced directive
+        // writes itself back out on colons instead of being flattened onto
+        // backticks, which would collide with a code fence in its own body.
+        fenceChar: {
+          default: "`",
+          validate: "string",
+        },
+        // The run length of that character. A directive wrapping its own
+        // nested fence needs a longer outer marker to parse at all — MyST
+        // authors already write it that way — so the original length is kept
+        // as a floor rather than always recomputed from scratch.
+        fenceLength: {
+          default: 3,
+          validate: "number",
+        },
       },
       content: "text*",
       marks: "comment",
@@ -263,6 +299,10 @@ export default class CodeFence extends Node<CodeFenceOptions> {
           getAttrs: (dom: HTMLDivElement) => ({
             language: dom.dataset.language,
             wrap: dom.classList.contains("with-line-wrap"),
+            fenceChar: dom.dataset.fenceChar || "`",
+            fenceLength: dom.dataset.fenceLength
+              ? Number(dom.dataset.fenceLength)
+              : 3,
           }),
         },
         {
@@ -295,6 +335,12 @@ export default class CodeFence extends Node<CodeFenceOptions> {
           {
             class: classes,
             "data-language": node.attrs.language,
+            ...(node.attrs.fenceChar !== "`"
+              ? { "data-fence-char": node.attrs.fenceChar }
+              : {}),
+            ...(node.attrs.fenceLength !== 3
+              ? { "data-fence-length": String(node.attrs.fenceLength) }
+              : {}),
           },
           ["pre", ["code", { spellCheck: "false" }, 0]],
         ];
@@ -788,12 +834,18 @@ export default class CodeFence extends Node<CodeFenceOptions> {
       ? escapeRawTableCell(node.textContent)
       : node.textContent;
 
-    // The fence must be longer than any backtick run in the content, or the
-    // content could terminate the fence early when the markdown is parsed.
-    const backticks = content.match(/`{3,}/g);
-    const fence = "`".repeat(
-      backticks ? Math.max(...backticks.map((run) => run.length)) + 1 : 3
+    // The fence must be longer than any same-character run in the content, or
+    // the content could terminate the fence early when reparsed. The stored
+    // length is kept as a floor beneath that, so a directive originally
+    // wrapped wider than it strictly needed to be — matching an inner fence's
+    // nesting depth — round-trips at that same width instead of shrinking.
+    const fenceChar: string = node.attrs.fenceChar || "`";
+    const contentRun = longestRun(content, fenceChar);
+    const fenceLength = Math.max(
+      node.attrs.fenceLength || 3,
+      contentRun >= 3 ? contentRun + 1 : 3
     );
+    const fence = fenceChar.repeat(fenceLength);
 
     state.write(fence + sanitizeLanguage(node.attrs.language) + "\n");
     state.text(content, false);
@@ -809,7 +861,11 @@ export default class CodeFence extends Node<CodeFenceOptions> {
   parseMarkdown() {
     return {
       block: "code_block",
-      getAttrs: (tok: Token) => ({ language: sanitizeLanguage(tok.info) }),
+      getAttrs: (tok: Token) => ({
+        language: sanitizeLanguage(tok.info),
+        fenceChar: tok.markup?.[0] || "`",
+        fenceLength: tok.markup?.length || 3,
+      }),
       noCloseToken: true,
     };
   }

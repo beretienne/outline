@@ -269,18 +269,84 @@ describe("directives holding what a notice cannot", () => {
  * backtick fences before pushing.
  */
 describe("known limits of the colon container", () => {
-  test("a dropdown is swallowed and becomes a note", () => {
-    expect(roundTrip(":::{dropdown} More\nHidden.\n:::")).toBe(
-      "```{note}\nHidden.\n\n```"
-    );
-  });
-
   test("a colon fence holding a table is emptied", () => {
-    // The backtick path checks its contents before claiming; this one cannot,
-    // because markdown-it-container decides from the info string alone.
+    // `{note}` is a real admonition, so this one is still handed to
+    // container_notice, which decides from the info string alone, before
+    // there is anything to look at — the backtick path checks its contents
+    // before claiming; this one cannot.
     expect(roundTrip(":::{note}\n| a | b |\n|---|---|\n| 1 | 2 |\n:::")).toBe(
       ""
     );
+  });
+});
+
+/**
+ * A colon fence whose info string names no admonition — `{glossary}`,
+ * `{ifconfig}`, `{grid}`, `{margin}`, a custom Sphinx directive, or anything
+ * markdown-it-container would otherwise have claimed on sight — round-trips
+ * byte for byte, the same guarantee the backtick path already gives every
+ * directive Outline has no node for. Recorded verbatim as a `code_fence`
+ * carrying the original marker character and run length, rather than being
+ * parsed as a notice and coming back mangled or, for a nested body,
+ * dropped from the document entirely.
+ *
+ * Every row here previously round-tripped into `{note}` with its structure
+ * collapsed, or into the empty string.
+ */
+describe("colon-fenced directives with no notice claim it", () => {
+  test.each([
+    [
+      "a definition list under {glossary}",
+      ":::::{glossary}\nTerm\n: Definition\n:::::",
+    ],
+    [
+      "{ifconfig} wrapping a table",
+      "::::{ifconfig} Class == 'A'\n| a | b |\n|---|---|\n| 1 | 2 |\n::::",
+    ],
+    [
+      "{ifconfig} wrapping a nested {figure-md}",
+      "::::{ifconfig} Class == 'A'\n:::{figure-md} label\n![](x.png)\n\nCaption\n:::\n::::",
+    ],
+    ["{margin}", ":::{margin}\nAside.\n:::"],
+    [
+      "{grid} wrapping two {grid-item} fences",
+      "::::::{grid} 2\n:::{grid-item}\nOne\n:::\n:::{grid-item}\nTwo\n:::\n::::::",
+    ],
+    // Previously the plan's own "known limit": swallowed into a bare note.
+    ["a dropdown", ":::{dropdown} More\nHidden.\n:::"],
+    // A custom Sphinx admonition subclass, as the FM manual uses.
+    ["a custom admonition subclass", ":::{vm}\nBody.\n:::"],
+  ])("%s", (_name, source) => {
+    expect(roundTrip(source)).toBe(source);
+    expect(roundTrip(roundTrip(source))).toBe(source);
+  });
+
+  test("survives indented inside a list item", () => {
+    const source = "1. Step\n\n   :::{margin}\n   Aside.\n   :::";
+    expect(roundTrip(source)).toBe(source);
+  });
+
+  test("an admonition name is still claimed as a notice, unaffected", () => {
+    expect(roundTrip(":::{note}\nBody.\n:::")).toBe("```{note}\nBody.\n\n```");
+    expect(roundTrip(":::warning\nBody.\n:::")).toBe(
+      "```{caution}\nBody.\n\n```"
+    );
+  });
+
+  test("an unclosed fence auto-closes at end of document", () => {
+    expect(roundTrip(":::{glossary}\nTerm\n: Def")).toBe(
+      ":::{glossary}\nTerm\n: Def\n:::"
+    );
+  });
+
+  test("a backtick code example inside does not collide, because the wrapper stays on colons", () => {
+    // Flattening every fence to backticks on output — CodeFence's only option
+    // before it could carry `fenceChar` — would end this block at the inner
+    // ``` instead of the outer :::, truncating everything after it. Keeping
+    // the wrapper on colons sidesteps the collision entirely, at any nesting
+    // depth, without needing to know how deep the content goes.
+    const source = ":::{margin}\n```python\nprint(1)\n```\n:::";
+    expect(roundTrip(source)).toBe(source);
   });
 });
 
