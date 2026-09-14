@@ -114,6 +114,106 @@ export function longestRun(text: string, char: string): number {
   return longest;
 }
 
+/**
+ * Build the editable field that shows a preserved directive's fence info
+ * string, e.g. `{ifconfig} Class == 'A'`.
+ *
+ * A plain, uncontrolled `<input>`: its value is only read from the node on
+ * creation and only written back to it on commit, never kept in sync on
+ * every keystroke, so nothing re-renders — and nothing can steal focus —
+ * while a person is still typing. This is a stable, module-level function
+ * reference rather than a closure created fresh per render, which is what
+ * lets ProseMirror recognize the same widget across unrelated document
+ * changes elsewhere (a collaborator typing, say) and reuse its DOM node
+ * instead of replacing it and losing focus.
+ *
+ * @param view - the editor view this widget is being rendered into.
+ * @param getPos - resolves this widget's current document position; provided
+ * by ProseMirror and kept accurate across transactions.
+ * @returns the input element.
+ */
+function buildDirectiveLabelWidget(
+  view: EditorView,
+  getPos: () => number | undefined
+): HTMLElement {
+  const nodeAtPos = () => {
+    const pos = getPos();
+    return pos === undefined ? undefined : view.state.doc.nodeAt(pos);
+  };
+
+  const input = document.createElement("input");
+  input.type = "text";
+  input.spellcheck = false;
+  input.autocomplete = "off";
+  input.className = EditorStyleHelper.codeBlockDirectiveLabel;
+  input.value = nodeAtPos()?.attrs.language ?? "";
+  input.readOnly = !view.editable;
+
+  const commit = () => {
+    const pos = getPos();
+    const node = nodeAtPos();
+    if (pos === undefined || !node || input.value === node.attrs.language) {
+      return;
+    }
+    view.dispatch(
+      view.state.tr.setNodeMarkup(pos, undefined, {
+        ...node.attrs,
+        language: input.value,
+      })
+    );
+  };
+
+  input.addEventListener("blur", commit);
+  input.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      input.blur();
+    } else if (event.key === "Escape") {
+      event.preventDefault();
+      input.value = nodeAtPos()?.attrs.language ?? "";
+      input.blur();
+    }
+  });
+
+  return input;
+}
+
+/**
+ * Shows the editable field built by `buildDirectiveLabelWidget` above every
+ * code block whose language opens a MyST directive — `{ifconfig}`,
+ * `{glossary}`, any name Outline has no node for — and none other. An
+ * ordinary code block, its language picked from the toolbar, never gets
+ * this decoration at all.
+ *
+ * @returns the plugin.
+ */
+function directiveLabelPlugin(): Plugin {
+  return new Plugin({
+    key: new PluginKey("code-fence-directive-label"),
+    props: {
+      decorations(state) {
+        const decorations: Decoration[] = [];
+        state.doc.descendants((node, pos) => {
+          if (!isCode(node)) {
+            return true;
+          }
+          if (DIRECTIVE_INFO.test(node.attrs.language || "")) {
+            decorations.push(
+              Decoration.widget(pos, buildDirectiveLabelWidget, {
+                side: -1,
+                key: `directive-label-${pos}`,
+                stopEvent: () => true,
+              })
+            );
+          }
+          return false;
+        });
+        return DecorationSet.create(state.doc, decorations);
+      },
+    },
+  });
+}
+
 interface CollapseState {
   /** Positions of code blocks taller than COLLAPSE_HEIGHT_RATIO of the viewport. */
   tallBlocks: Set<number>;
@@ -821,6 +921,12 @@ export default class CodeFence extends Node<CodeFenceOptions> {
       }),
       // Collapse plugins - only on code_fence (not CodeBlock subclass)
       ...(this.name === "code_fence" ? this.collapsePlugins() : []),
+      // Not gated to code_fence: parsed markdown always builds a code_block
+      // node (CodeBlock's own markdownToken, "code_block", is what a fence
+      // token actually maps to — see CodeFence.parseMarkdown below), so a
+      // preserved directive imported from markdown needs this decoration on
+      // that node type, not the one created by typing in the editor.
+      directiveLabelPlugin(),
     ].filter(Boolean) as Plugin[];
   }
 

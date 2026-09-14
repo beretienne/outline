@@ -48,6 +48,9 @@ export class EditorStyleHelper {
   /** Toggle button for collapsible code blocks */
   static readonly codeBlockToggle = "code-block-toggle";
 
+  /** Editable field showing a preserved directive's own fence info string */
+  static readonly codeBlockDirectiveLabel = "code-block-directive-label";
+
   // Diffs
 
   static readonly diffInsertion = "diff-insertion";

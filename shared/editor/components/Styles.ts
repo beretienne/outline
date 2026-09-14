@@ -1857,16 +1857,48 @@ mark {
    written back out unchanged. Nothing else about the code block ever shows
    that string: syntax highlighting silently no-ops on it, there is no
    language-picker UI displaying it. Without this a block like that reads as
-   anonymous grey text with no indication of what it actually is. */
-.${EditorStyleHelper.codeBlock}[data-language^="{"] {
-  &::before {
-    content: attr(data-language);
-    display: block;
-    margin-bottom: 4px;
-    font-family: ${props.theme.fontFamilyMono};
-    font-size: 12px;
-    font-weight: 600;
-    color: ${props.theme.textSecondary};
+   anonymous grey text with no indication of what it actually is.
+
+   True static HTML — export, a public share page, print — has no editor
+   view and so no widget decoration either; this is its only source for the
+   label, hence guarded to staticHTML alone. Everywhere a real EditorView
+   exists, editable or read-only, CodeFence's own directive-label plugin
+   renders an equivalent element instead, doubling as the field the label is
+   edited through when the view is editable. */
+${
+  props.staticHTML &&
+  css`
+    .${EditorStyleHelper.codeBlock}[data-language^="{"]::before {
+      content: attr(data-language);
+      display: block;
+      margin-bottom: 4px;
+      font-family: ${props.theme.fontFamilyMono};
+      font-size: 12px;
+      font-weight: 600;
+      color: ${props.theme.textSecondary};
+    }
+  `
+}
+
+.${EditorStyleHelper.codeBlockDirectiveLabel} {
+  display: block;
+  width: 100%;
+  margin-bottom: 4px;
+  padding: 0;
+  border: 0;
+  outline: none;
+  background: transparent;
+  font-family: ${props.theme.fontFamilyMono};
+  font-size: 12px;
+  font-weight: 600;
+  color: ${props.theme.textSecondary};
+
+  &:focus {
+    color: ${props.theme.text};
+  }
+
+  &:read-only {
+    cursor: text;
   }
 }
 
