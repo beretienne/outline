@@ -546,8 +546,14 @@ export default class Image extends SimpleImage {
       node: "image",
       getAttrs: (token: Token) => ({
         src: token.attrGet("src"),
-        alt: token.content || null,
+        // A figure/figure-md directive's caption lives apart from the image
+        // line itself (shared/editor/rules/figures.ts), so it is handed in
+        // here as token meta rather than as this token's own alt text.
+        alt: token.meta?.caption || token.content || null,
         ...parseTitleAttribute(token?.attrGet("title") || ""),
+        // Likewise a directive's own recognized pixel width, read from MyST
+        // attrs_inline rather than Outline's `=WxH` title suffix.
+        ...(token.meta?.width ? { width: token.meta.width } : {}),
       }),
     };
   }

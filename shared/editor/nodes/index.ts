@@ -26,6 +26,7 @@ import CodeFence from "./CodeFence";
 import Doc from "./Doc";
 import Embed from "./Embed";
 import Emoji from "./Emoji";
+import Figure from "./Figure";
 import HardBreak from "./HardBreak";
 import Heading from "./Heading";
 import HorizontalRule from "./HorizontalRule";
@@ -111,6 +112,7 @@ export const basicExtensions: Nodes = [
 export const richExtensions: Nodes = [
   ...inlineExtensions.filter((n) => n !== SimpleImage),
   Image,
+  Figure,
   CodeBlock,
   CodeFence,
   Blockquote,

@@ -56,11 +56,11 @@ describe("preserved exactly", () => {
    * the fence info string as a `language` attribute. Ordinarily that attribute
    * is cut to its first word so it cannot break the fence line, but an info
    * string opening with a `{directive}` is kept whole, argument included, since
-   * `{figure} media/photo.png` without its path is not the same directive.
+   * `{toctree} Contents` without its title is not the same directive.
    * They render as inert code blocks in Outline but come back as valid MyST.
    */
   test.each([
-    ["figure", "```{figure} media/photo.png\n:width: 50%\n\nCaption.\n```"],
+    ["toctree", "```{toctree} Contents\n:maxdepth: 2\n\ndoc1\ndoc2\n```"],
     ["margin", "```{margin}\nAside.\n```"],
     ["eval-rst", "```{eval-rst}\n.. index:: term\n```"],
     ["rubric", "```{rubric} Heading\n```"],
@@ -351,6 +351,152 @@ describe("colon-fenced directives with no notice claim it", () => {
 });
 
 /**
+ * `{figure-md}` and `{figure}` become a real Figure node — an ordinary,
+ * editable image with its caption in the same `alt` field every other
+ * image already uses — instead of an inert code block, when the body is
+ * exactly a lone image with, at most, a plain-text caption.
+ *
+ * The label MyST cross-references point at, and a recognized pixel width
+ * written as `{width=…}` or `:width:`, both survive; anything this rule does
+ * not understand about the body — a legend, more than one paragraph of
+ * caption, a YAML option block, an alt text that disagrees with the caption —
+ * declines the whole figure rather than guess, leaving it exactly as inert
+ * and byte-exact as any other directive Outline has no node for.
+ */
+describe("figure and figure-md become native figures", () => {
+  test("the real template from the QCAM5 install manual", () => {
+    const source =
+      ":::{figure-md} camera_wiring_11\n" +
+      "![](media/Connecting_the_camera.011.png){width=600}\n" +
+      "\n" +
+      "Camera wiring - 11\n" +
+      ":::";
+
+    const once = roundTrip(source);
+    expect(once).toBe(
+      "```{figure-md} camera_wiring_11\n" +
+        "![](media/Connecting_the_camera.011.png){width=600}\n" +
+        "\n" +
+        "Camera wiring - 11\n\n" +
+        "```"
+    );
+    expect(roundTrip(once)).toBe(once);
+  });
+
+  test("a backtick figure-md round-trips the same way a colon one does", () => {
+    const source =
+      "```{figure-md} label\n![](pic.png){width=600}\n\nCaption\n```";
+    const once = roundTrip(source);
+    expect(once).toBe(source.replace(/\n```$/, "\n\n```"));
+    expect(roundTrip(once)).toBe(once);
+  });
+
+  test("figure-md with no caption", () => {
+    const source = ":::{figure-md} label\n![](pic.png){width=600}\n:::";
+    expect(roundTrip(source)).toBe(
+      "```{figure-md} label\n![](pic.png){width=600}\n\n```"
+    );
+  });
+
+  test("figure-md with no width", () => {
+    const source = ":::{figure-md} label\n![](pic.png)\n\nCaption\n:::";
+    expect(roundTrip(source)).toBe(
+      "```{figure-md} label\n![](pic.png)\n\nCaption\n\n```"
+    );
+  });
+
+  test("a caption with emphasis flattens to plain text rather than being lost", () => {
+    const source =
+      ":::{figure-md} label\n![](pic.png)\n\nCamera wiring - *front view*\n:::";
+    expect(roundTrip(source)).toBe(
+      "```{figure-md} label\n![](pic.png)\n\nCamera wiring - front view\n\n```"
+    );
+  });
+
+  test("figure, target as the directive's own argument", () => {
+    const source = "```{figure} images/pic.png\nCaption text\n```";
+    expect(roundTrip(source)).toBe(
+      "```{figure} images/pic.png\nCaption text\n\n```"
+    );
+  });
+
+  test("figure with a :width: option", () => {
+    const source =
+      "```{figure} images/pic.png\n:width: 400\n\nCaption text\n```";
+    const once = roundTrip(source);
+    expect(once).toBe(source.replace(/\n```$/, "\n\n```"));
+    expect(roundTrip(once)).toBe(once);
+  });
+
+  test("figure with a non-width option keeps it verbatim", () => {
+    const source =
+      "```{figure} images/pic.png\n:align: center\n\nCaption text\n```";
+    const once = roundTrip(source);
+    expect(once).toBe(source.replace(/\n```$/, "\n\n```"));
+    expect(roundTrip(once)).toBe(once);
+  });
+
+  test("figure with no body at all", () => {
+    expect(roundTrip("```{figure} images/pic.png\n```")).toBe(
+      "```{figure} images/pic.png\n```"
+    );
+  });
+
+  test("the real nested figure from doc-model-approval is now a native figure too, and settles", () => {
+    // The admonition wrapping it needs a longer fence than three backticks to
+    // clear the figure's own — see Notice's `requiredFenceLength`.
+    const source =
+      "````{admonition} Important note\n" +
+      ":class: danger\n\n" +
+      "Ensure that the cables are routed to the rear of the camera mount.\n\n" +
+      ":::{figure-md} camera_wiring_11\n" +
+      "![](media/Connecting_the_camera.011.png){width=600}\n\n" +
+      "Camera wiring - 11\n" +
+      ":::\n" +
+      "````";
+
+    const once = roundTrip(source);
+    expect(once).toContain("```{figure-md} camera_wiring_11");
+    expect(once).toContain("Connecting_the_camera.011.png");
+    expect(once).toContain("Camera wiring - 11");
+    expect(once).toContain("Ensure that the cables");
+    expect(roundTrip(once)).toBe(once);
+  });
+
+  describe("declines rather than guesses, and stays an inert fence", () => {
+    test("a legend paragraph after the caption", () => {
+      const source =
+        ":::{figure-md} label\n![](pic.png)\n\nCaption\n\nA legend paragraph.\n:::";
+      expect(roundTrip(source)).toBe(source);
+    });
+
+    test("a table in place of an image", () => {
+      const source =
+        ":::{figure-md} label\n| a | b |\n|---|---|\n| 1 | 2 |\n:::";
+      expect(roundTrip(source)).toBe(source);
+    });
+
+    test("a YAML option block on figure — not the line-style options this rule understands", () => {
+      const source =
+        "```{figure} images/pic.png\n---\nscale: 50%\n---\nCaption text\n```";
+      expect(roundTrip(source)).toBe(source);
+    });
+
+    test("an image line's own alt text disagreeing with the caption", () => {
+      const source =
+        ":::{figure-md} label\n![Different text](pic.png)\n\nCaption\n:::";
+      expect(roundTrip(source)).toBe(source);
+    });
+
+    test("figure with no target", () => {
+      expect(roundTrip("```{figure}\nCaption\n```")).toBe(
+        "```{figure}\nCaption\n```"
+      );
+    });
+  });
+});
+
+/**
  * Notices stored before the node gained `directive`, `title` and `options` have
  * none of them in their ProseMirror JSON. Every document already in the
  * database is in that shape, so they have to keep serializing as they did.
@@ -472,17 +618,57 @@ describe("known limits", () => {
     expect(roundTrip(source)).not.toBe(source);
   });
 
-  test("a code block inside a callout never settles", () => {
-    // Both are fenced with ```, so the callout ends at the code block rather
-    // than wrapping it. Unlike the case above this one is reachable from the
-    // editor — a writer can drop a code block into a notice — and it degrades
-    // on every save rather than failing once, which is why MARKDOWN_README.md
-    // tells writers to put the code block after the callout instead.
+  test("a code block inside a callout now settles: the notice's own fence grows to clear it", () => {
+    // A callout built in the editor — a writer drops a code block into a
+    // notice — starts life as a real ProseMirror doc, not parsed markdown, so
+    // this constructs one directly rather than through a source string.
+    //
+    // Both a callout and a code block fence with ```, so a callout that
+    // always wrote exactly three backticks ended at the code block's own
+    // closing fence rather than its own, and grew another stray fence around
+    // the wreckage on every subsequent save. The callout now scans its own
+    // content first and writes a fence one longer than anything nested
+    // inside it needs, so this settles on the first save.
+    const doc = schema.nodeFromJSON({
+      type: "doc",
+      content: [
+        {
+          type: "container_notice",
+          attrs: { style: "info" },
+          content: [
+            { type: "paragraph", content: [{ type: "text", text: "Before." }] },
+            {
+              type: "code_fence",
+              attrs: { language: "python" },
+              content: [{ type: "text", text: "print(1)" }],
+            },
+            { type: "paragraph", content: [{ type: "text", text: "After." }] },
+          ],
+        },
+      ],
+    });
+
+    const once = serializer.serialize(doc, { commonMark: true }).trim();
+    expect(once).toBe(
+      "````{note}\nBefore.\n\n```python\nprint(1)\n```\n\nAfter.\n\n````"
+    );
+    expect(roundTrip(once)).toBe(once);
+  });
+
+  test("a hand-written same-length nesting still cannot parse — the general fence limit, not this one", () => {
+    // Unlike the editor-created case above, a source string typed with the
+    // callout and its nested code block at the very same fence length is the
+    // general "a directive containing a nested fence cannot round-trip" limit
+    // pinned elsewhere in this file: the closing fence search cannot tell
+    // which fence a same-length line belongs to, so it matches the code
+    // block's own closer first no matter how the outer block is written back.
+    // It no longer degrades further on repeated saves, though — the content
+    // it does capture stays exactly where a second pass leaves it.
     const source =
       "```{note}\nBefore.\n\n```python\nprint(1)\n```\n\nAfter.\n```";
     const once = roundTrip(source);
     expect(once).not.toBe(source);
-    expect(roundTrip(once)).not.toBe(once);
+    expect(roundTrip(once)).toBe(once);
   });
 
   test("raw HTML survives as literal text, not as markup", () => {

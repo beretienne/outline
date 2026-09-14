@@ -183,25 +183,9 @@ Sphinx has no equivalent and shows a row of plus signs instead.
 
 ### Code blocks
 
-Come through perfectly, language dropdown included.
-
-**One arrangement to keep an eye out for: a code block tucked inside a
-callout.** Both are fenced with ` ``` `, so the callout closes at the code block
-rather than wrapping around it, and the two drift apart a little more each time
-the page is saved. A longer outer fence does not rescue it either, because the
-closing fence is always written back with three backticks.
-
-Putting the code just below the callout reads better anyway:
-
-````markdown
-```{note}
-Run the calibration first.
-```
-
-```bash
-qcam-calibrate --section 4
-```
-````
+Come through perfectly, language dropdown included, even one dropped inside a
+callout — the callout writes a longer outer fence to clear it, so the two
+never collide however deep the nesting goes.
 
 ### Tables, bullet lists, numbered lists, checkboxes, quotes, dividers
 
@@ -325,14 +309,16 @@ The picture and the words come through; what is set aside is Sphinx's knowledge
 that one was a numbered figure and the other an unnumbered heading. If a page
 depends on numbered figure references, keep it out of the Outline sync.
 
-**Two arrangements to avoid**, both shared with callouts:
+**One arrangement to avoid, shared with callouts:** a code fence pasted inside
+a directive as raw markdown text, both fenced with ` ``` ` at the same length.
+Reachable only by pasting markdown text, not by anything the editor lets you
+build — a directive Outline has no button for holds only text, so there is
+nowhere to place a real nested code block from inside the editor itself. Keep
+code blocks alongside directives rather than inside them.
 
-- A code fence inside a directive. Both use ` ``` `, so the directive closes
-  early. Keep code blocks alongside directives rather than inside them.
-- A directive nested inside an admonition — a `{figure}` or `{figure-md}` inside
-  an `{admonition}`, say. The outer block keeps its plain code-block appearance
-  rather than becoming a callout. Nothing is lost, but if you wanted the colour,
-  put the figure after the admonition rather than inside it.
+A directive nested inside an admonition — a `{figure}` or `{figure-md}` inside
+an `{admonition}`, say — keeps its own colour and stays editable; the
+admonition writes a longer outer fence to clear whatever is nested inside it.
 
 ---
 

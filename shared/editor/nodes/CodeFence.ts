@@ -103,7 +103,7 @@ function sanitizeLanguage(language: string | null | undefined): string {
  * @returns the length of the longest consecutive run of `char` in `text`, or
  * 0 if it does not occur.
  */
-function longestRun(text: string, char: string): number {
+export function longestRun(text: string, char: string): number {
   let longest = 0;
   let current = 0;
   for (const ch of text) {

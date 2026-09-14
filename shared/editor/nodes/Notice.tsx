@@ -13,7 +13,52 @@ import type { MarkdownSerializerState } from "../lib/markdown/serializer";
 import noticesRule, { parseNoticeInfo } from "../rules/notices";
 import { EditorStyleHelper } from "../styles/EditorStyleHelper";
 import type { ComponentProps } from "../types";
+import { longestRun } from "./CodeFence";
 import Node from "./Node";
+
+/** A notice's fence when it contains nothing that could collide with it. */
+const DEFAULT_FENCE_LENGTH = 3;
+
+/**
+ * The shortest backtick fence long enough to wrap every code fence or figure
+ * this notice contains, directly or nested further down, without colliding
+ * with any of them.
+ *
+ * Both children write themselves back with backtick fences too — a code
+ * fence grows its own to clear its own content, a figure always uses three —
+ * so without this, an admonition wrapping either would end at the first
+ * inner fence line instead of its own, truncating on parse and, on every
+ * subsequent save, growing another stray fence around the wreckage.
+ *
+ * A colon-fenced (preserved, unclaimed-directive) code fence is not a
+ * backtick at all and so cannot collide regardless of its own length.
+ *
+ * @param node - the notice node whose content to scan.
+ * @returns the fence length to write, at least `DEFAULT_FENCE_LENGTH`.
+ */
+function requiredFenceLength(node: ProsemirrorNode): number {
+  let innerMax = 0;
+  node.descendants((child) => {
+    if (child.type.name === "code_fence" || child.type.name === "code_block") {
+      const fenceChar: string = child.attrs.fenceChar || "`";
+      if (fenceChar === "`") {
+        const contentRun = longestRun(child.textContent, "`");
+        const childLength = Math.max(
+          child.attrs.fenceLength || DEFAULT_FENCE_LENGTH,
+          contentRun >= 3 ? contentRun + 1 : DEFAULT_FENCE_LENGTH
+        );
+        innerMax = Math.max(innerMax, childLength);
+      }
+      return false;
+    }
+    if (child.type.name === "figure") {
+      innerMax = Math.max(innerMax, DEFAULT_FENCE_LENGTH);
+      return false;
+    }
+    return true;
+  });
+  return innerMax > 0 ? innerMax + 1 : DEFAULT_FENCE_LENGTH;
+}
 
 export enum NoticeTypes {
   Info = "info",
@@ -90,7 +135,7 @@ export default class Notice extends Node {
         },
       },
       content:
-        "(list | blockquote | hr | paragraph | heading | code_block | code_fence | attachment)+",
+        "(list | blockquote | hr | paragraph | heading | code_block | code_fence | attachment | figure)+",
       group: "block",
       defining: true,
       draggable: true,
@@ -273,15 +318,16 @@ export default class Notice extends Node {
     const directive =
       node.attrs.directive || noticeTypeToMystDirective[style] || style;
     const title = node.attrs.title ? ` ${node.attrs.title}` : "";
+    const fence = "`".repeat(requiredFenceLength(node));
 
-    state.write(`\n\`\`\`{${directive}}${title}\n`);
+    state.write(`\n${fence}{${directive}}${title}\n`);
     if (node.attrs.options) {
       // MyST wants a blank line between the option block and the body.
       state.write(`${node.attrs.options}\n\n`);
     }
     state.renderContent(node);
     state.ensureNewLine();
-    state.write("```");
+    state.write(fence);
     state.closeBlock(node);
   }
 

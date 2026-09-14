@@ -54,13 +54,16 @@ describe("code fences", () => {
   });
 
   it("keeps the argument of a MyST directive in the fence info string", () => {
-    const doc = parser.parse("```{figure} media/photo.png\ncontent\n```");
+    // {toctree}, unlike {figure}, has no native node in Outline and so is
+    // never claimed away from CodeFence — see server/editor/myst.test.ts's
+    // "unsupported directive" cases for the directives that stay this way.
+    const doc = parser.parse("```{toctree} Contents\ndoc1\n```");
 
     expect(doc?.firstChild?.type.name).toBe("code_block");
-    expect(doc?.firstChild?.attrs.language).toBe("{figure} media/photo.png");
+    expect(doc?.firstChild?.attrs.language).toBe("{toctree} Contents");
 
     const output = serializer.serialize(doc!);
-    expect(output.split("\n")[0]).toBe("```{figure} media/photo.png");
+    expect(output.split("\n")[0]).toBe("```{toctree} Contents");
   });
 
   it("collapses whitespace in a directive info string to one line", () => {
@@ -69,16 +72,14 @@ describe("code fences", () => {
       content: [
         {
           type: "code_block",
-          attrs: { language: "{figure}  media/photo.png\nnot a\tnew line" },
-          content: [{ type: "text", text: "content" }],
+          attrs: { language: "{toctree}  Contents\nnot a\tnew line" },
+          content: [{ type: "text", text: "doc1" }],
         },
       ],
     });
     const output = serializer.serialize(doc);
 
-    expect(output.split("\n")[0]).toBe(
-      "```{figure} media/photo.png not a new line"
-    );
+    expect(output.split("\n")[0]).toBe("```{toctree} Contents not a new line");
     expect(parser.parse(output)?.firstChild?.type.name).toBe("code_block");
   });
 
