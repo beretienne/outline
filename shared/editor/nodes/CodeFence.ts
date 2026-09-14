@@ -185,16 +185,26 @@ function buildDirectiveLabelWidget(
  * ordinary code block, its language picked from the toolbar, never gets
  * this decoration at all.
  *
+ * Scoped to one schema node type name rather than `isCode()`'s "either
+ * code_fence or code_block" on purpose: `CodeBlock extends CodeFence` and
+ * inherits `get plugins()` unchanged, so this plugin is built once per
+ * extension instance — once for "code_fence", once for "code_block" — and
+ * an unscoped version would have both copies walk the whole document and
+ * decorate the very same node twice over, one input stacked on another.
+ * Matching only the caller's own node type keeps the two instances disjoint.
+ *
+ * @param nodeName - the schema node type name this instance owns —
+ * `this.name` from whichever of CodeFence or CodeBlock is building it.
  * @returns the plugin.
  */
-function directiveLabelPlugin(): Plugin {
+function directiveLabelPlugin(nodeName: string): Plugin {
   return new Plugin({
-    key: new PluginKey("code-fence-directive-label"),
+    key: new PluginKey(`code-fence-directive-label-${nodeName}`),
     props: {
       decorations(state) {
         const decorations: Decoration[] = [];
         state.doc.descendants((node, pos) => {
-          if (!isCode(node)) {
+          if (node.type.name !== nodeName) {
             return true;
           }
           if (DIRECTIVE_INFO.test(node.attrs.language || "")) {
@@ -921,12 +931,14 @@ export default class CodeFence extends Node<CodeFenceOptions> {
       }),
       // Collapse plugins - only on code_fence (not CodeBlock subclass)
       ...(this.name === "code_fence" ? this.collapsePlugins() : []),
-      // Not gated to code_fence: parsed markdown always builds a code_block
-      // node (CodeBlock's own markdownToken, "code_block", is what a fence
-      // token actually maps to — see CodeFence.parseMarkdown below), so a
-      // preserved directive imported from markdown needs this decoration on
-      // that node type, not the one created by typing in the editor.
-      directiveLabelPlugin(),
+      // Included for both node types, not just code_fence: parsed markdown
+      // always builds a code_block node (CodeBlock's own markdownToken,
+      // "code_block", is what a fence token actually maps to — see
+      // CodeFence.parseMarkdown below), so a preserved directive imported
+      // from markdown needs this decoration on that node type, not the one
+      // created by typing in the editor. this.name scopes each instance to
+      // its own node type — see directiveLabelPlugin's own doc comment.
+      directiveLabelPlugin(this.name),
     ].filter(Boolean) as Plugin[];
   }
 
