@@ -1,12 +1,14 @@
 import type Token from "markdown-it/lib/token.mjs";
 import { WarningIcon, InfoIcon, StarredIcon, DoneIcon } from "outline-icons";
 import { wrappingInputRule } from "prosemirror-inputrules";
+import type { FocusEvent, KeyboardEvent } from "react";
 import type {
   NodeSpec,
   Node as ProsemirrorNode,
   NodeType,
 } from "prosemirror-model";
 import type { Command, EditorState, Transaction } from "prosemirror-state";
+import { TextSelection } from "prosemirror-state";
 import type { Primitive } from "utility-types";
 import toggleWrap from "../commands/toggleWrap";
 import type { MarkdownSerializerState } from "../lib/markdown/serializer";
@@ -276,6 +278,48 @@ export default class Notice extends Node {
     return false;
   };
 
+  /**
+   * Pressing Enter while editing the title moves the cursor into the
+   * notice's own body instead of inserting a line break — a title is a
+   * single line, the same reasoning Image's caption field already applies
+   * to itself.
+   */
+  handleTitleKeyDown =
+    ({ getPos, view }: ComponentProps) =>
+    (event: KeyboardEvent<HTMLDivElement>) => {
+      if (event.key !== "Enter") {
+        return;
+      }
+      event.preventDefault();
+      const $pos = view.state.doc.resolve(getPos() + 1);
+      view.dispatch(
+        view.state.tr.setSelection(TextSelection.near($pos)).scrollIntoView()
+      );
+      view.focus();
+    };
+
+  /**
+   * Commits an edited title on blur, the same pattern Image's own caption
+   * field uses for `alt` — the title lives on the node as a plain string
+   * attribute, not as ProseMirror content, so this is a `setNodeMarkup`
+   * rather than a document edit. The directive this arrived as is left
+   * alone: editing the title's text does not change which directive it is.
+   */
+  handleTitleBlur =
+    ({ node, getPos, view }: ComponentProps) =>
+    (event: FocusEvent<HTMLDivElement>) => {
+      const title = event.currentTarget.innerText.trim();
+      if (title === (node.attrs.title || "")) {
+        return;
+      }
+      view.dispatch(
+        view.state.tr.setNodeMarkup(getPos(), undefined, {
+          ...node.attrs,
+          title,
+        })
+      );
+    };
+
   component = (props: ComponentProps) => {
     const { node } = props;
     const title: string = node.attrs.title || "";
@@ -302,11 +346,12 @@ export default class Notice extends Node {
         </div>
         {title ? (
           <div className={EditorStyleHelper.noticeBody}>
-            {/* Read-only: the title is a MyST directive argument, not
-                ProseMirror content, so it is not yet editable in place. */}
             <div
               className={EditorStyleHelper.noticeTitle}
-              contentEditable={false}
+              contentEditable={props.isEditable}
+              suppressContentEditableWarning
+              onBlur={this.handleTitleBlur(props)}
+              onKeyDown={this.handleTitleKeyDown(props)}
             >
               {title}
             </div>
