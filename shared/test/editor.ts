@@ -223,6 +223,44 @@ export function hr() {
 }
 
 /**
+ * Creates a `definition_term` node — one half of a `definition_list` entry.
+ *
+ * @param text - the term text (empty for a fresh, untyped term).
+ * @returns definition_term node.
+ */
+export function definitionTerm(text = "") {
+  return schema.nodes.definition_term.create(
+    null,
+    text ? schema.text(text) : undefined
+  );
+}
+
+/**
+ * Creates a `definition_body` node — the other half of a `definition_list`
+ * entry, holding whatever blocks the term is defined by.
+ *
+ * @param children - block node(s) making up the definition.
+ * @returns definition_body node.
+ */
+export function definitionBody(
+  children: ReturnType<typeof p | typeof bulletList | typeof orderedList>[]
+) {
+  return schema.nodes.definition_body.create(null, children);
+}
+
+/**
+ * Creates a `definition_list` node from alternating term/body pairs.
+ *
+ * @param entries - definition_term and definition_body nodes, interleaved.
+ * @returns definition_list node.
+ */
+export function definitionList(
+  ...entries: ReturnType<typeof definitionTerm | typeof definitionBody>[]
+) {
+  return schema.nodes.definition_list.create(null, entries);
+}
+
+/**
  * Creates a document node with the given content.
  *
  * @param content - block node(s) to include in the document.
@@ -239,6 +277,7 @@ export function doc(
         | typeof orderedList
         | typeof codeBlock
         | typeof hr
+        | typeof definitionList
       >
     | ReturnType<
         | typeof p
@@ -249,6 +288,7 @@ export function doc(
         | typeof orderedList
         | typeof codeBlock
         | typeof hr
+        | typeof definitionList
       >[]
 ) {
   return schema.nodes.doc.create(null, content);

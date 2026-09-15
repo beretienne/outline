@@ -1,5 +1,7 @@
 import type { NodeSpec } from "prosemirror-model";
 import type { Node as ProsemirrorNode } from "prosemirror-model";
+import type { Command } from "prosemirror-state";
+import { splitDefinitionEntry } from "../commands/definitionList";
 import type { MarkdownSerializerState } from "../lib/markdown/serializer";
 import { EditorStyleHelper } from "../styles/EditorStyleHelper";
 import Node from "./Node";
@@ -31,6 +33,12 @@ export default class DefinitionBody extends Node {
       defining: true,
       parseDOM: [{ tag: `dd.${EditorStyleHelper.definitionBody}` }],
       toDOM: () => ["dd", { class: EditorStyleHelper.definitionBody }, 0],
+    };
+  }
+
+  keys(): Record<string, Command> {
+    return {
+      Enter: splitDefinitionEntry,
     };
   }
 
