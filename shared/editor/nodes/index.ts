@@ -5,6 +5,7 @@ import HeadingPrefix from "../extensions/HeadingPrefix";
 import History from "../extensions/History";
 import InputRuleUndo from "../extensions/InputRuleUndo";
 import MaxLength from "../extensions/MaxLength";
+import PreventDirectiveMerge from "../extensions/PreventDirectiveMerge";
 import TrailingNode from "../extensions/TrailingNode";
 import type { AnyExtensionClass } from "../lib/types";
 import Bold from "../marks/Bold";
@@ -134,6 +135,7 @@ export const richExtensions: Nodes = [
   // catch-all ever sees it, or it never would.
   Directive,
   Notice,
+  PreventDirectiveMerge,
   DefinitionList,
   DefinitionTerm,
   DefinitionBody,
