@@ -1,12 +1,28 @@
 import type Token from "markdown-it/lib/token.mjs";
 import { SettingsIcon } from "outline-icons";
 import type { NodeSpec, Node as ProsemirrorNode } from "prosemirror-model";
+import type { FocusEvent, KeyboardEvent } from "react";
+import { TextSelection } from "prosemirror-state";
 import { DEFAULT_FENCE_LENGTH, requiredFenceLength } from "../lib/fenceLength";
 import type { MarkdownSerializerState } from "../lib/markdown/serializer";
 import directivesRule, { parseDirectiveInfo } from "../rules/directives";
 import { EditorStyleHelper } from "../styles/EditorStyleHelper";
 import type { ComponentProps } from "../types";
 import Node from "./Node";
+
+/**
+ * The label text a directive's name and argument are shown and edited as,
+ * e.g. `{grid} 2` or `{margin}` — always braced, regardless of whether the
+ * directive itself arrived on a colon or backtick fence (that distinction
+ * lives in `fenceChar`, not here).
+ *
+ * @param directive - the directive name, e.g. "grid".
+ * @param argument - the directive's argument, e.g. "2". May be empty.
+ * @returns the braced label text.
+ */
+function formatDirectiveLabel(directive: string, argument: string): string {
+  return `{${directive}}${argument ? ` ${argument}` : ""}`;
+}
 
 /**
  * A MyST directive Outline gives a real, structured node to instead of the
@@ -22,11 +38,19 @@ import Node from "./Node";
  * `Functional_architecture.md`; `{ifconfig}`/`{grid}` are colon-fenced
  * everywhere else seen).
  *
- * The label (directive name + argument) is read-only in this first pass —
- * `CodeFence` already has a `Decoration.widget` mechanism for editing a
- * preserved directive's own info string in place; wiring the same mechanism
- * onto this node is a natural, separate follow-up rather than part of this
- * node's initial landing.
+ * The label (directive name + argument) is editable in place — the same
+ * `contentEditable` isolation pattern `Notice`'s own title uses, reused
+ * directly rather than `CodeFence`'s `Decoration.widget` mechanism, since
+ * this node already has a React `component` `CodeFence` does not.
+ *
+ * Only the *shape* is validated on commit — braced, and naming a directive
+ * still on `DIRECTIVE_ALLOWLIST` (anything else has nowhere left to be
+ * written back to on the next save, silently downgrading to a plain
+ * `CodeFence` the next time the document is parsed from markdown, not
+ * visibly on the spot). The argument itself — `2` in `{grid} 2`, a
+ * condition in `{ifconfig} Class == 'A'` — is free text: what it means, or
+ * whether it makes sense for whatever consumes this directive outside
+ * Outline, is left entirely to whoever is editing it.
  */
 export default class Directive extends Node {
   get name() {
@@ -109,27 +133,135 @@ export default class Directive extends Node {
         [
           "div",
           { class: EditorStyleHelper.directiveLabel, contentEditable: "false" },
-          `${node.attrs.directive}${node.attrs.argument ? ` ${node.attrs.argument}` : ""}`,
+          formatDirectiveLabel(node.attrs.directive, node.attrs.argument),
         ],
         ["div", { class: EditorStyleHelper.directiveContent }, 0],
       ],
     };
   }
 
+  /**
+   * Parks ProseMirror's own selection inside this directive the moment the
+   * label is about to receive focus — see the identical, live-debugged
+   * reasoning on `Notice.handleTitleMouseDown`. There is no document
+   * position inside the label itself for ProseMirror to land on, and this
+   * never calls `view.focus()`, so native click handling still moves actual
+   * DOM focus into the field right after.
+   */
+  handleLabelMouseDown =
+    ({ getPos, view }: ComponentProps) =>
+    () => {
+      const $pos = view.state.doc.resolve(getPos() + 1);
+      view.dispatch(view.state.tr.setSelection(TextSelection.near($pos)));
+    };
+
+  /**
+   * Every key is stopped here, the same way and for the same reason as
+   * `Notice.handleTitleKeyDown`: the label sits inside ProseMirror's own
+   * contentEditable region but is not part of its document model, so an
+   * unstopped Backspace or similar bubbles up to ProseMirror's keymap and
+   * acts on a stale selection instead of the field's own visible cursor.
+   * Enter additionally moves the cursor into this directive's own body.
+   */
+  handleLabelKeyDown =
+    ({ getPos, view }: ComponentProps) =>
+    (event: KeyboardEvent<HTMLDivElement>) => {
+      event.stopPropagation();
+      if (event.key !== "Enter") {
+        return;
+      }
+      event.preventDefault();
+      const $pos = view.state.doc.resolve(getPos() + 1);
+      view.dispatch(
+        view.state.tr.setSelection(TextSelection.near($pos)).scrollIntoView()
+      );
+      view.focus();
+    };
+
+  /**
+   * Commits an edited label on blur — but only a syntactically valid one.
+   * `parseDirectiveInfo` requires braces and an allowlisted name; anything
+   * else (a typo in the braces, a name this node can no longer represent)
+   * is rejected outright and the field snaps back to the last good value,
+   * rather than writing an attribute combination this node cannot itself
+   * write back out to matching markdown on the next save. The argument
+   * half of a valid edit is never second-guessed — see the class doc.
+   */
+  handleLabelBlur =
+    ({ node, getPos, view }: ComponentProps) =>
+    (event: FocusEvent<HTMLDivElement>) => {
+      const typed = event.currentTarget.innerText.trim();
+      const currentLabel = formatDirectiveLabel(
+        node.attrs.directive,
+        node.attrs.argument
+      );
+      if (typed === currentLabel) {
+        return;
+      }
+
+      // Braces are required here, matching what's actually displayed
+      // (`formatDirectiveLabel` always shows them) — unlike the parser's own
+      // `allowBare: true`, which additionally accepts a bare directive name
+      // because that is how a *source* colon fence is legitimately written,
+      // not because that is what this field ever shows.
+      const parsed = parseDirectiveInfo(typed, { allowBare: false });
+      if (!parsed) {
+        event.currentTarget.innerText = currentLabel;
+        event.currentTarget.classList.add(
+          EditorStyleHelper.directiveLabelInvalid
+        );
+        window.setTimeout(() => {
+          event.currentTarget?.classList.remove(
+            EditorStyleHelper.directiveLabelInvalid
+          );
+        }, 600);
+        return;
+      }
+
+      const newLabel = formatDirectiveLabel(parsed.directive, parsed.argument);
+      if (newLabel !== typed) {
+        event.currentTarget.innerText = newLabel;
+      }
+      view.dispatch(
+        view.state.tr.setNodeMarkup(getPos(), undefined, {
+          ...node.attrs,
+          directive: parsed.directive,
+          argument: parsed.argument,
+        })
+      );
+    };
+
   component = (props: ComponentProps) => {
     const { node } = props;
-    const label = `${node.attrs.directive}${
-      node.attrs.argument ? ` ${node.attrs.argument}` : ""
-    }`;
+    const label = formatDirectiveLabel(
+      node.attrs.directive,
+      node.attrs.argument
+    );
 
     return (
       <div className={EditorStyleHelper.directiveBlock}>
         <div
-          className={EditorStyleHelper.directiveLabel}
+          className={EditorStyleHelper.directiveLabelRow}
           contentEditable={false}
         >
           <SettingsIcon size={14} />
-          <span>{label}</span>
+          {/* See the identical structure and reasoning on `Notice`'s own
+              title: the outer `contentEditable={false}` — this whole row —
+              is what actually isolates the label from ProseMirror's
+              editable root; nesting `true` directly inside it, with nothing
+              else, is not an event boundary on its own. The icon stays a
+              plain sibling outside the editable field itself, the same way
+              Notice keeps its own icon out of the title field. */}
+          <div
+            className={EditorStyleHelper.directiveLabel}
+            contentEditable={props.isEditable}
+            suppressContentEditableWarning
+            onMouseDown={this.handleLabelMouseDown(props)}
+            onBlur={this.handleLabelBlur(props)}
+            onKeyDown={this.handleLabelKeyDown(props)}
+          >
+            {label}
+          </div>
         </div>
         <div
           className={EditorStyleHelper.directiveContent}
@@ -150,7 +282,6 @@ export default class Directive extends Node {
       requiredFenceLength(node, fenceChar)
     );
     const fence = fenceChar.repeat(fenceLength);
-    const argument = node.attrs.argument ? ` ${node.attrs.argument}` : "";
 
     // See the identical comment in `Notice.toMarkdown`: `write` only applies
     // the current list-item indentation once, at the start of the string
@@ -159,7 +290,9 @@ export default class Directive extends Node {
     // nested in a list item silently loses its indentation, and its place in
     // the list, on save.
     state.ensureNewLine();
-    state.write(`${fence}{${node.attrs.directive}}${argument}\n`);
+    state.write(
+      `${fence}${formatDirectiveLabel(node.attrs.directive, node.attrs.argument)}\n`
+    );
     if (node.attrs.options) {
       // MyST wants a blank line between the option block and the body,
       // matching Notice's own convention for the same thing.

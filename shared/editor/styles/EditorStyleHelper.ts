@@ -109,8 +109,15 @@ export class EditorStyleHelper {
    * dedicated node type for). */
   static readonly directiveBlock = "directive-block";
 
-  /** A directive block's label, showing its name and argument. */
+  /** Row holding a directive block's icon and editable label together. */
+  static readonly directiveLabelRow = "directive-label-row";
+
+  /** A directive block's editable label field, showing its name and
+   * argument (not the icon — that stays outside the editable field). */
   static readonly directiveLabel = "directive-label";
+
+  /** Briefly applied to the label after a rejected, unparseable edit. */
+  static readonly directiveLabelInvalid = "directive-label-invalid";
 
   /** A directive block's content area. */
   static readonly directiveContent = "directive-content";

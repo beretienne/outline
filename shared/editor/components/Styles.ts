@@ -1429,18 +1429,45 @@ ${
   }
 }
 
-.${EditorStyleHelper.directiveBlock} .${EditorStyleHelper.directiveLabel} {
+.${EditorStyleHelper.directiveBlock} .${EditorStyleHelper.directiveLabelRow} {
   display: flex;
   align-items: center;
   gap: 4px;
   margin-bottom: 4px;
-  font-family: ${props.theme.fontFamilyMono};
-  font-size: 12px;
-  font-weight: 600;
   color: ${props.theme.textSecondary};
 
   svg {
     flex-shrink: 0;
+  }
+}
+
+.${EditorStyleHelper.directiveBlock} .${EditorStyleHelper.directiveLabel} {
+  min-width: 4em;
+  font-family: ${props.theme.fontFamilyMono};
+  font-size: 12px;
+  font-weight: 600;
+  cursor: text;
+  border-radius: 3px;
+  outline: none;
+
+  &:focus {
+    color: ${props.theme.text};
+    box-shadow: 0 0 0 2px ${props.theme.codeBorder};
+  }
+
+  &.${EditorStyleHelper.directiveLabelInvalid} {
+    animation: directive-label-invalid-flash 0.6s ease;
+  }
+}
+
+@keyframes directive-label-invalid-flash {
+  0%,
+  100% {
+    box-shadow: none;
+  }
+  25%,
+  75% {
+    box-shadow: 0 0 0 2px ${props.theme.danger};
   }
 }
 
