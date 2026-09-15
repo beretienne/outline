@@ -23,6 +23,7 @@ import CheckboxItem from "./CheckboxItem";
 import CheckboxList from "./CheckboxList";
 import CodeBlock from "./CodeBlock";
 import CodeFence from "./CodeFence";
+import Directive from "./Directive";
 import Doc from "./Doc";
 import Embed from "./Embed";
 import Emoji from "./Emoji";
@@ -119,6 +120,16 @@ export const richExtensions: Nodes = [
   Embed,
   Attachment,
   Video,
+  // Registered before Notice: both register a colon-fence container rule via
+  // markdown-it-container, which always anchors itself immediately before
+  // the core "fence" rule — so whichever registers first ends up earlier in
+  // the block-ruler chain. Notice's own `container_notice` validates any
+  // `:::` fence unconditionally true (relying on `unclaimedColonFence`,
+  // registered right before it, to have already deferred anything that
+  // isn't a real admonition); `container_directive` has to get its own,
+  // narrower look at an allowlisted-but-non-admonition fence before that
+  // catch-all ever sees it, or it never would.
+  Directive,
   Notice,
   Heading,
   HeadingPrefix,

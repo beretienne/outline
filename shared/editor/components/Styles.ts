@@ -1408,6 +1408,46 @@ ${
   }
 }
 
+/* A directive Outline gives a real node to but has no dedicated node type
+   for — {ifconfig}, {grid}, {grid-item}, {margin} — rendered as a neutral
+   box rather than one of Notice's four callout colours: this is a
+   structural/conditional wrapper, not a callout. */
+.${EditorStyleHelper.directiveBlock} {
+  position: relative;
+  background: ${transparentize(0.5, props.theme.codeBackground)};
+  border: 1px solid ${props.theme.codeBorder};
+  border-radius: ${EditorStyleHelper.blockRadius};
+  padding: 8px 10px;
+  margin: 8px 0;
+
+  p:first-child {
+    margin-top: 0;
+  }
+
+  p:last-child {
+    margin-bottom: 0;
+  }
+}
+
+.${EditorStyleHelper.directiveBlock} .${EditorStyleHelper.directiveLabel} {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 4px;
+  font-family: ${props.theme.fontFamilyMono};
+  font-size: 12px;
+  font-weight: 600;
+  color: ${props.theme.textSecondary};
+
+  svg {
+    flex-shrink: 0;
+  }
+}
+
+.${EditorStyleHelper.directiveBlock} .${EditorStyleHelper.directiveContent} {
+  min-width: 0;
+}
+
 blockquote {
   margin: 0;
   padding: 8px 10px 8px 1.5em;

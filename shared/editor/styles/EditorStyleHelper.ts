@@ -102,6 +102,19 @@ export class EditorStyleHelper {
   /** A notice's title, drawn above its content. */
   static readonly noticeTitle = "notice-title";
 
+  // Directives
+
+  /** Generic directive block wrapper (`{ifconfig}`, `{grid}`, `{grid-item}`,
+   * `{margin}` — any directive Outline gives a real node to but has no
+   * dedicated node type for). */
+  static readonly directiveBlock = "directive-block";
+
+  /** A directive block's label, showing its name and argument. */
+  static readonly directiveLabel = "directive-label";
+
+  /** A directive block's content area. */
+  static readonly directiveContent = "directive-content";
+
   // Suggestions
 
   /** Trigger character and search term while a suggestion menu is open */

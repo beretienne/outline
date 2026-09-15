@@ -61,7 +61,6 @@ describe("preserved exactly", () => {
    */
   test.each([
     ["toctree", "```{toctree} Contents\n:maxdepth: 2\n\ndoc1\ndoc2\n```"],
-    ["margin", "```{margin}\nAside.\n```"],
     ["eval-rst", "```{eval-rst}\n.. index:: term\n```"],
     ["rubric", "```{rubric} Heading\n```"],
   ])("unsupported directive: %s", (_name, source) => {
@@ -261,56 +260,47 @@ describe("directives holding what a notice cannot", () => {
   });
 });
 
-/**
- * Known limits of the colon container, both predating the notice work. It
- * claims every `:::` fence on sight, before anything can look at what is inside.
- *
- * `outline-sync` keeps a source tree clear of both by moving admonitions onto
- * backtick fences before pushing.
- */
-describe("known limits of the colon container", () => {
-  test("a colon fence holding a table is emptied", () => {
-    // `{note}` is a real admonition, so this one is still handed to
-    // container_notice, which decides from the info string alone, before
-    // there is anything to look at — the backtick path checks its contents
-    // before claiming; this one cannot.
-    expect(roundTrip(":::{note}\n| a | b |\n|---|---|\n| 1 | 2 |\n:::")).toBe(
-      ""
-    );
+describe("a table inside a notice no longer empties the block", () => {
+  test("a colon fence holding a table round-trips", () => {
+    // Used to be a known limit: `{note}` is a real admonition, so this is
+    // handed to container_notice, which decides from the info string alone,
+    // before there is anything to look at — a table used to be one of the
+    // block types `container_notice`'s own content expression had nowhere to
+    // put, so the whole node failed to build and the block was dropped. Fixed
+    // by adding `table` to that content expression as part of the generic
+    // directive work (`{ifconfig}` wrapping a table nested inside an
+    // admonition is real content, in `Detection_field_calibration.md`).
+    const once = roundTrip(":::{note}\n| a | b |\n|---|---|\n| 1 | 2 |\n:::");
+    expect(once).not.toBe("");
+    expect(once).toContain("{note}");
+    expect(once).toContain("| a");
+    // Takes one extra save to settle a trailing blank line before the
+    // closing fence — content is unaffected either way.
+    expect(roundTrip(roundTrip(once))).toBe(roundTrip(once));
   });
 });
 
 /**
- * A colon fence whose info string names no admonition — `{glossary}`,
- * `{ifconfig}`, `{grid}`, `{margin}`, a custom Sphinx directive, or anything
- * markdown-it-container would otherwise have claimed on sight — round-trips
- * byte for byte, the same guarantee the backtick path already gives every
- * directive Outline has no node for. Recorded verbatim as a `code_fence`
- * carrying the original marker character and run length, rather than being
- * parsed as a notice and coming back mangled or, for a nested body,
- * dropped from the document entirely.
+ * A colon fence whose info string names no admonition and is not on
+ * `DIRECTIVE_ALLOWLIST` either — `{glossary}`, a custom Sphinx directive, or
+ * anything markdown-it-container would otherwise have claimed on sight —
+ * still round-trips byte for byte, the same guarantee the backtick path
+ * already gives every directive Outline has no node for. Recorded verbatim
+ * as a `code_fence` carrying the original marker character and run length,
+ * rather than being parsed as a notice and coming back mangled or, for a
+ * nested body, dropped from the document entirely.
  *
- * Every row here previously round-tripped into `{note}` with its structure
- * collapsed, or into the empty string.
+ * `{glossary}` specifically stays here rather than getting a real node: its
+ * body is an indentation-significant definition list (`Term\n: Definition`),
+ * and flattening that into ordinary blocks would lose the indent that makes
+ * it one once written back out — a real deflist node (step 4) is needed
+ * before that can round-trip as anything other than opaque text.
  */
-describe("colon-fenced directives with no notice claim it", () => {
+describe("colon-fenced directives with no node at all still round-trip byte for byte", () => {
   test.each([
     [
       "a definition list under {glossary}",
       ":::::{glossary}\nTerm\n: Definition\n:::::",
-    ],
-    [
-      "{ifconfig} wrapping a table",
-      "::::{ifconfig} Class == 'A'\n| a | b |\n|---|---|\n| 1 | 2 |\n::::",
-    ],
-    [
-      "{ifconfig} wrapping a nested {figure-md}",
-      "::::{ifconfig} Class == 'A'\n:::{figure-md} label\n![](x.png)\n\nCaption\n:::\n::::",
-    ],
-    ["{margin}", ":::{margin}\nAside.\n:::"],
-    [
-      "{grid} wrapping two {grid-item} fences",
-      "::::::{grid} 2\n:::{grid-item}\nOne\n:::\n:::{grid-item}\nTwo\n:::\n::::::",
     ],
     // Previously the plan's own "known limit": swallowed into a bare note.
     ["a dropdown", ":::{dropdown} More\nHidden.\n:::"],
@@ -321,21 +311,151 @@ describe("colon-fenced directives with no notice claim it", () => {
     expect(roundTrip(roundTrip(source))).toBe(source);
   });
 
-  test("survives indented inside a list item", () => {
-    const source = "1. Step\n\n   :::{margin}\n   Aside.\n   :::";
-    expect(roundTrip(source)).toBe(source);
-  });
-
-  test("an admonition name is still claimed as a notice, unaffected", () => {
-    expect(roundTrip(":::{note}\nBody.\n:::")).toBe("```{note}\nBody.\n\n```");
-    expect(roundTrip(":::warning\nBody.\n:::")).toBe(
-      "```{caution}\nBody.\n\n```"
-    );
-  });
-
   test("an unclosed fence auto-closes at end of document", () => {
     expect(roundTrip(":::{glossary}\nTerm\n: Def")).toBe(
       ":::{glossary}\nTerm\n: Def\n:::"
+    );
+  });
+});
+
+/**
+ * `{ifconfig}`, `{grid}`, `{grid-item}` and `{margin}` — `DIRECTIVE_ALLOWLIST`
+ * in `shared/editor/rules/directives.ts` — get a real, structured
+ * `container_directive` node instead of the inert `code_fence` every other
+ * directive falls back to: editable content, not opaque preserved text.
+ *
+ * Round-tripping settles one blank line before the closing fence, the same
+ * shape `Notice`'s own output already has (`state.renderContent` separates
+ * block children with a blank line; the raw preserved text these used to be
+ * did not) — a real formatting difference from the old inert path, not a
+ * bug, so these assert the settled shape directly rather than byte-identity
+ * with the input.
+ */
+describe("ifconfig, grid, grid-item and margin become real directive nodes", () => {
+  test("{ifconfig} wrapping a table", () => {
+    const source =
+      "::::{ifconfig} Class == 'A'\n| a | b |\n|---|---|\n| 1 | 2 |\n::::";
+    const once = roundTrip(source);
+    expect(once).toBe(
+      "::::{ifconfig} Class == 'A'\n\n| a   | b   |\n|-----|-----|\n| 1   | 2   |\n\n::::"
+    );
+    expect(roundTrip(once)).toBe(once);
+  });
+
+  test("{ifconfig} wrapping a nested {figure-md}", () => {
+    // The figure comes back on a backtick fence — Figure always writes one,
+    // regardless of how it arrived (step 3's own established behaviour,
+    // unrelated to this node) — so this is not byte-identical to the colon
+    // form it was written in, only equivalent.
+    const source =
+      "::::{ifconfig} Class == 'A'\n:::{figure-md} label\n![](x.png)\n\nCaption\n:::\n::::";
+    const once = roundTrip(source);
+    expect(once).toBe(
+      "::::{ifconfig} Class == 'A'\n\n```{figure-md} label\n![](x.png)\n\nCaption\n\n```\n\n::::"
+    );
+    expect(roundTrip(once)).toBe(once);
+  });
+
+  /**
+   * `Directive`'s own option-lifting (`directiveOptions` in
+   * `shared/editor/rules/directives.ts`) keeps `{ifconfig}`'s option lines
+   * out of the visible body, the same mechanism `codeFenceOptions.ts` already
+   * gives a genuinely unclaimed directive (tested above, with `{dropdown}` in
+   * its place now that `{ifconfig}` no longer exercises that path).
+   */
+  test.each([
+    [
+      "one option line",
+      "```{ifconfig} Class == 'A'\n:some-option: value\n\nBody text.\n```",
+      "```{ifconfig} Class == 'A'\n:some-option: value\n\nBody text.\n\n```",
+    ],
+    [
+      "several option lines",
+      "```{ifconfig} Class == 'A'\n:opt1: a\n:opt2: b\n\nBody text.\n```",
+      "```{ifconfig} Class == 'A'\n:opt1: a\n:opt2: b\n\nBody text.\n\n```",
+    ],
+    [
+      "no options at all, unaffected",
+      "```{ifconfig} Class == 'A'\nBody text.\n```",
+      "```{ifconfig} Class == 'A'\nBody text.\n\n```",
+    ],
+  ])("%s", (_name, source, expected) => {
+    const once = roundTrip(source);
+    expect(once).toBe(expected);
+    expect(roundTrip(once)).toBe(once);
+  });
+
+  test("an options-only body is lifted whole, leaving an empty body rather than losing anything", () => {
+    const source = "```{ifconfig} Class == 'A'\n:only-option: value\n```";
+    const once = roundTrip(source);
+    expect(once).toContain(":only-option: value");
+    expect(roundTrip(once)).toBe(once);
+  });
+
+  test("{margin}", () => {
+    const source = ":::{margin}\nAside.\n:::";
+    const once = roundTrip(source);
+    expect(once).toBe(":::{margin}\nAside.\n\n:::");
+    expect(roundTrip(once)).toBe(once);
+  });
+
+  test("{grid} wrapping two {grid-item} fences", () => {
+    // Keeps the source's own generously-wide 6-colon grid fence rather than
+    // shrinking to the minimal safe length (4 would clear the 3-colon
+    // grid-items it wraps) — `requiredFenceLength` only ever grows a fence
+    // past its own stored length, never shrinks it, the same "a directive
+    // wrapped wider than strictly needed round-trips at that same width"
+    // guarantee `CodeFence` already gives every directive Outline has no
+    // node for.
+    const source =
+      "::::::{grid} 2\n:::{grid-item}\nOne\n:::\n:::{grid-item}\nTwo\n:::\n::::::";
+    const once = roundTrip(source);
+    expect(once).toBe(
+      "::::::{grid} 2\n:::{grid-item}\nOne\n\n:::\n\n:::{grid-item}\nTwo\n\n:::\n\n::::::"
+    );
+    expect(roundTrip(once)).toBe(once);
+  });
+
+  test("{grid} wrapping a {grid-item} that itself needs to grow past a same-length sibling", () => {
+    // The malformed real-world case from
+    // Finding_the_optimal_deployment_configuration.md: the first
+    // {grid-item} has no closer of its own, so the closing-fence search
+    // (shared with `container_notice`'s own colon parsing, and with
+    // markdown-it-container's native one) finds the *second* grid-item's own
+    // closer instead and treats it as the first one's — nesting the second
+    // grid-item inside the first rather than beside it. However this doc
+    // actually got structured on parse, `requiredFenceLength` has to look at
+    // what a nested `container_directive` child will *actually* be written
+    // as — including its own stored-length floor, not just the minimum its
+    // content alone would need — or a same-length collision between it and
+    // its own child goes unnoticed and re-derives itself identically forever,
+    // growing another stray fence on every single save.
+    const source =
+      "::::::{grid} 2\n:gutter: 0\n::::{grid-item}\n\n:::{figure-md} reference-distances-1\n![](media/camera_distances.001.png){width=500}\n\nReference Distances - 1\n:::\n::::{grid-item}\n:::{figure-md} reference-distances-2\n![](media/camera_distances.002.png){width=500}\n\nReference Distances - 2\n:::\n::::\n::::::";
+    const once = roundTrip(source);
+    expect(roundTrip(once)).toBe(once);
+    // Settles at a fifth colon on the (now inner) first grid-item, one past
+    // the second grid-item nested inside it at its own stored four.
+    expect(once).toContain(":::::{grid-item}");
+  });
+
+  test("survives indented inside a list item", () => {
+    const source = "1. Step\n\n   :::{margin}\n   Aside.\n   :::";
+    const once = roundTrip(source);
+    expect(once).toBe("1. Step\n\n   :::{margin}\n   Aside.\n\n   :::");
+    expect(roundTrip(once)).toBe(once);
+  });
+
+  test("an admonition name is still claimed as a notice, unaffected", () => {
+    // Guards the registration-order fix this node needed: `Directive` has to
+    // register before `Notice` so `container_directive`'s own narrower
+    // validate gets a look at a `:::` fence before `container_notice`'s
+    // unconditional one would otherwise claim it regardless of directive
+    // name — verified live by this test previously reporting `{margin}`
+    // silently coming back as `{note}`.
+    expect(roundTrip(":::{note}\nBody.\n:::")).toBe("```{note}\nBody.\n\n```");
+    expect(roundTrip(":::warning\nBody.\n:::")).toBe(
+      "```{caution}\nBody.\n\n```"
     );
   });
 
@@ -346,32 +466,85 @@ describe("colon-fenced directives with no notice claim it", () => {
     // the wrapper on colons sidesteps the collision entirely, at any nesting
     // depth, without needing to know how deep the content goes.
     const source = ":::{margin}\n```python\nprint(1)\n```\n:::";
-    expect(roundTrip(source)).toBe(source);
+    const once = roundTrip(source);
+    expect(once).toBe(":::{margin}\n```python\nprint(1)\n```\n\n:::");
+    expect(roundTrip(once)).toBe(once);
+  });
+
+  test("an admonition wrapping a colon-fenced directive still clears a backtick run hiding three levels down", () => {
+    // The general fence-collision guard (`requiredFenceLength`) has to keep
+    // descending into a directive fenced in a *different* character than the
+    // ancestor it's scanning for, rather than stopping there — this directive
+    // is colon-fenced and wraps a real backtick code example three levels
+    // down from a backtick-fenced admonition, which only the admonition's own
+    // fence has to clear.
+    const source =
+      ":::{admonition} Title\n:::{ifconfig} Class == 'A'\n```python\nprint(1)\n```\n:::\n:::";
+    const once = roundTrip(source);
+    expect(once).toContain("print(1)");
+    expect(once).toContain("Class == 'A'");
+    expect(roundTrip(once)).toBe(once);
+  });
+
+  /**
+   * `customFence`'s own `validate` only ever sees a directive's opening
+   * line — there is no body yet to check when it decides whether to claim a
+   * `:::` fence — so unlike the backtick path (which parses the body first
+   * and only commits to a container if everything in it fits), a colon-fenced
+   * directive whose body holds something `Directive`'s content expression
+   * has nowhere to put already exists as real container tokens by the time
+   * anything could object. `guardDirectiveContent` undoes that: found live
+   * while testing this node, the same way the pre-existing "a colon fence
+   * holding a table is emptied" gap was found for `container_notice` — an
+   * `{ifconfig}` wrapping a table used to come back as an empty string
+   * before `table` was added to `Directive`'s own content expression, and a
+   * math block (never added, on purpose — `Directive` has no more use for
+   * one than `Notice` does) would still do the same without this guard.
+   */
+  test("a colon-fenced directive holding what it cannot falls back to the inert fence, not an empty document", () => {
+    const source = "::::{ifconfig} Class == 'A'\nProse.\n\n$$\nx^2\n$$\n::::";
+    const once = roundTrip(source);
+    expect(once).toBe(source);
+    expect(roundTrip(once)).toBe(once);
+  });
+
+  test("only the offending grid-item falls back — its sibling is unaffected unless it shares the same outer span", () => {
+    // Coarse, not surgical: the whole outermost container_directive span
+    // (here, the {grid}) is what falls back, taking a sibling grid-item that
+    // was perfectly fine on its own down with it too — simpler and safer
+    // than trying to fix up just the one offending descendant while leaving
+    // a partially-converted tree around it.
+    const source =
+      "::::::{grid} 2\n:::{grid-item}\nProse.\n\n$$\nx^2\n$$\n:::\n:::{grid-item}\nFine.\n:::\n::::::";
+    const once = roundTrip(source);
+    expect(once).toBe(source);
+    expect(roundTrip(once)).toBe(once);
   });
 });
 
 /**
- * A directive Outline has no node for still keeps its own option lines out
- * of the body, the same way a claimed admonition already does — metadata,
- * not prose, lifted onto the node rather than shown as a stray line of
- * text. Not editable yet; the point for now is that the data survives
+ * A directive with no node at all — genuinely unclaimed, unlike `{ifconfig}`
+ * now — still keeps its own option lines out of the body, the same way a
+ * claimed admonition already does — metadata, not prose, lifted onto the
+ * `code_fence` node's `options` attribute rather than shown as a stray line
+ * of text. Not editable yet; the point for now is that the data survives
  * structured rather than folded into the opaque body text, ready for an
- * editing surface later.
+ * editing surface later. `{dropdown}` here rather than `{ifconfig}` so this
+ * still actually exercises `codeFenceOptions.ts` — the same mechanism
+ * `Directive`'s own `directiveOptions` (tested separately, below, alongside
+ * the rest of what `{ifconfig}` does now) was modelled on.
  */
 describe("an unclaimed directive keeps its own option lines out of the body", () => {
   test.each([
     [
       "one option line",
-      "```{ifconfig} Class == 'A'\n:some-option: value\n\nBody text.\n```",
+      "```{dropdown} More\n:some-option: value\n\nBody text.\n```",
     ],
     [
       "several option lines",
-      "```{ifconfig} Class == 'A'\n:opt1: a\n:opt2: b\n\nBody text.\n```",
+      "```{dropdown} More\n:opt1: a\n:opt2: b\n\nBody text.\n```",
     ],
-    [
-      "no options at all, unaffected",
-      "```{ifconfig} Class == 'A'\nBody text.\n```",
-    ],
+    ["no options at all, unaffected", "```{dropdown} More\nBody text.\n```"],
   ])("%s", (_name, source) => {
     const once = roundTrip(source);
     expect(once).toBe(source);
@@ -379,7 +552,7 @@ describe("an unclaimed directive keeps its own option lines out of the body", ()
   });
 
   test("an options-only body is lifted whole, leaving an empty body rather than losing anything", () => {
-    const source = "```{ifconfig} Class == 'A'\n:only-option: value\n```";
+    const source = "```{dropdown} More\n:only-option: value\n```";
     const once = roundTrip(source);
     expect(once).toContain(":only-option: value");
     expect(roundTrip(once)).toBe(once);
@@ -662,10 +835,14 @@ describe("outside the MyST-safe profile", () => {
  * Known limits, pinned so they are not mistaken for supported behaviour.
  */
 describe("known limits", () => {
-  test("a directive containing a nested fence cannot round-trip", () => {
-    // CodeFence writes a hardcoded three-backtick fence, so a directive whose
-    // body contains its own fence is truncated at the inner fence. Content like
-    // this must not be wrapped in a directive fence.
+  test("a directive containing a same-length nested fence cannot round-trip", () => {
+    // The ambiguity is upstream of any node: markdown-it's own core fence
+    // rule (and `mystDirectiveFences`'s later conversion of one into a real
+    // `container_directive`, for a directive on `DIRECTIVE_ALLOWLIST`) finds
+    // the *first* closing run of three backticks — the nested code block's
+    // own — and truncates there, regardless of what ends up claiming the
+    // outer block afterwards. Content like this must not be wrapped in a
+    // same-length directive fence to begin with.
     const source = "```{margin}\n```python\nprint(1)\n```\n```";
     expect(roundTrip(source)).not.toBe(source);
   });
@@ -720,21 +897,6 @@ describe("known limits", () => {
       "```{note}\nBefore.\n\n```python\nprint(1)\n```\n\nAfter.\n```";
     const once = roundTrip(source);
     expect(once).not.toBe(source);
-    expect(roundTrip(once)).toBe(once);
-  });
-
-  test("an admonition grows past a backtick run hiding inside an unclaimed colon-fenced child", () => {
-    // {ifconfig} isn't a directive Outline claims, so it stays a code_fence on
-    // its own colon wrapper — no collision with the admonition's own
-    // backticks there. But its raw, opaque body can itself hold a genuine
-    // backtick code example, and that run still ends up nested inside the
-    // admonition once everything is one markdown string. The admonition has
-    // to clear it too, not just whatever wraps it directly.
-    const source =
-      ":::{admonition} Title\n:::{ifconfig} Class == 'A'\n```python\nprint(1)\n```\n:::\n:::";
-    const once = roundTrip(source);
-    expect(once).toContain("print(1)");
-    expect(once).toContain("Class == 'A'");
     expect(roundTrip(once)).toBe(once);
   });
 

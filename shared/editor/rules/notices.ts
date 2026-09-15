@@ -2,6 +2,7 @@ import type MarkdownIt from "markdown-it";
 import type StateBlock from "markdown-it/lib/rules_block/state_block.mjs";
 import type Token from "markdown-it/lib/token.mjs";
 import customFence from "markdown-it-container";
+import { parseDirectiveInfo } from "./directives";
 
 /**
  * Every MyST admonition directive. Sphinx gives them each their own colour, but
@@ -218,11 +219,21 @@ const COLON_MARKER_CODE = ":".charCodeAt(0);
  * stray `{note}` or, worse, is dropped from the document entirely.
  *
  * Registered immediately before `container_notice`, this rule reads the same
- * info string first. A recognized admonition is left alone — returning
- * `false` hands the line straight to `container_notice`, unchanged from
- * today. Anything else is read as one opaque block, the same bargain the
- * backtick path already makes for a directive Outline has no node for: the
- * fence survives as an inert `code_fence`, complete with the original marker
+ * info string first, and defers (returns `false`, changing nothing) for
+ * either of two things that already have somewhere to put the content:
+ *
+ * - A recognized admonition — hands the line to `container_notice`, unchanged
+ *   from today.
+ * - An allowlisted generic directive (`{ifconfig}`, `{grid}`, `{grid-item}`,
+ *   `{margin}` — see `directives.ts`) — hands the line to
+ *   `container_directive`, registered the same way.
+ *
+ * Anything else — including `{glossary}`, deliberately not on that allowlist
+ * (its body is an indentation-significant definition list, which would
+ * silently lose the indent that makes it one if flattened into ordinary
+ * blocks) — is read here as one opaque block, the same bargain the backtick
+ * path already makes for a directive Outline has no node for: the fence
+ * survives as an inert `code_fence`, complete with the original marker
  * character and run length, so it renders as a grey code block and writes
  * itself back out exactly as written.
  *
@@ -257,7 +268,10 @@ function unclaimedColonFence(md: MarkdownIt): void {
 
       const markup = state.src.slice(openStart, pos);
       const params = state.src.slice(pos, max);
-      if (parseNoticeInfo(params, { allowBare: true })) {
+      if (
+        parseNoticeInfo(params, { allowBare: true }) ||
+        parseDirectiveInfo(params, { allowBare: true })
+      ) {
         return false;
       }
 
