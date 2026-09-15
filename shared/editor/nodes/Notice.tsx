@@ -106,6 +106,12 @@ export default class Notice extends Node {
         "(paragraph | list | blockquote | hr | heading | code_block | code_fence | attachment | figure | table | container_directive)+",
       group: "block",
       defining: true,
+      // Stops Backspace/Delete from crossing this node's own boundary to
+      // join it with a neighbour — see the identical, more detailed note
+      // on `Directive`'s own schema for the real bug this prevents (two
+      // adjacent callouts/directives silently merging into one, discarding
+      // the second one's own title/name/argument).
+      isolating: true,
       draggable: true,
       parseDOM: [
         {

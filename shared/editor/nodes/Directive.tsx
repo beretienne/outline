@@ -105,6 +105,19 @@ export default class Directive extends Node {
         "(paragraph | list | blockquote | hr | heading | code_block | code_fence | attachment | figure | table | container_notice | container_directive | definition_list)+",
       group: "block",
       defining: true,
+      // Stops Backspace/Delete from crossing this node's own boundary to
+      // join it with a neighbour — found live: two adjacent directives
+      // (e.g. two `{glossary}` blocks, or an `{ifconfig}` right after a
+      // `{grid}`) merged into one the moment a blank line between them was
+      // deleted, silently discarding the second one's own name and
+      // argument. ProseMirror's default join/lift behaviour has no notion
+      // of "this block is a self-contained unit" on its own; `isolating`
+      // is exactly that. A directive/notice that has already been emptied
+      // out is still deletable — see `deleteEmptyWrapper` in
+      // `commands/preventDirectiveMerge.ts`, and selecting the whole node
+      // (its drag handle) and deleting still removes it outright either
+      // way, unaffected by this flag.
+      isolating: true,
       draggable: true,
       parseDOM: [
         {
