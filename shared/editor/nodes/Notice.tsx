@@ -93,8 +93,17 @@ export default class Notice extends Node {
           default: "",
         },
       },
+      // `paragraph` is listed first deliberately: when an edit (e.g.
+      // deleting all of a notice's content) leaves this node needing
+      // ProseMirror to synthesize a default child from scratch, it walks
+      // this expression's alternatives in order and takes the first one
+      // that's trivially createable — with `list` first, that resolved to
+      // an empty checkbox item (`- [ ]`) instead of an empty paragraph, a
+      // real, user-visible bug found live. Order here only affects that
+      // default; every one of these types remains equally allowed as
+      // actual content regardless of position.
       content:
-        "(list | blockquote | hr | paragraph | heading | code_block | code_fence | attachment | figure | table | container_directive)+",
+        "(paragraph | list | blockquote | hr | heading | code_block | code_fence | attachment | figure | table | container_directive)+",
       group: "block",
       defining: true,
       draggable: true,

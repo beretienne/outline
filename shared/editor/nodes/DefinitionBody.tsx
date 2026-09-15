@@ -27,8 +27,12 @@ export default class DefinitionBody extends Node {
 
   get schema(): NodeSpec {
     return {
+      // `paragraph` is listed first deliberately — see the identical note
+      // on `Directive`'s own content expression: it's what ProseMirror
+      // falls back to by default (instead of an empty checkbox item) when
+      // an edit leaves this node needing a synthesized child from scratch.
       content:
-        "(list | blockquote | hr | paragraph | heading | code_block | code_fence | attachment | figure | table | container_notice | container_directive)+",
+        "(paragraph | list | blockquote | hr | heading | code_block | code_fence | attachment | figure | table | container_notice | container_directive)+",
       group: "block",
       defining: true,
       parseDOM: [{ tag: `dd.${EditorStyleHelper.definitionBody}` }],
