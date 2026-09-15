@@ -11,8 +11,90 @@ const OPTION_LINE = /^:[A-Za-z0-9_-]+:(?:\s|$)/;
 /** A `:width: 600`-style option line, pixels only. */
 const WIDTH_OPTION_LINE = /^:width:\s*(\d+)(?:px)?\s*$/;
 
-/** A bare or quoted pixel width in an image's trailing `{...}` attrs, e.g. `{width=600}`. */
-const WIDTH_ATTR = /^\{width=["']?(\d+)(?:px)?["']?\}$/;
+/** A single `width=` token inside an image's trailing `{...}` attrs, bare or quoted, e.g. `width=600` or `width="600px"`. */
+const WIDTH_TOKEN = /^width=["']?(\d+)(?:px)?["']?$/;
+
+/**
+ * A single `align=` token inside an image's trailing `{...}` attrs, e.g.
+ * `align=center`. MyST's own `align` option (see
+ * https://myst-parser.readthedocs.io/en/latest/syntax/images_and_figures.html)
+ * also accepts `top`/`middle`/`bottom` — a different axis entirely, vertical
+ * alignment for an image inline with text, which Outline's own image has no
+ * equivalent for at all. Left unrecognized on purpose rather than guessed
+ * at: this regex only ever matches the horizontal three Outline actually has
+ * something to do with.
+ */
+const ALIGN_TOKEN = /^align=["']?(left|right|center)["']?$/;
+
+/**
+ * Sphinx/MyST's horizontal `align` values map onto Outline's own image
+ * alignment override — `left-50`/`right-50` — except `center`, which is what
+ * Outline's image already renders as with no override at all, so there is
+ * nothing to set.
+ */
+const ALIGN_TO_LAYOUT_CLASS: Record<
+  "left" | "right" | "center",
+  string | null
+> = {
+  left: "left-50",
+  right: "right-50",
+  center: null,
+};
+
+/**
+ * Read an image's trailing `{...}` attrs text for a recognized pixel width
+ * and/or horizontal alignment — the only two MyST attrs_inline keys real
+ * figures in this project's docs actually combine (`{width=300
+ * align=center}`, `{align=center width=300}` — either order). MyST's
+ * attrs_inline extension has a wider vocabulary than this — a `.class`
+ * shorthand, `w=`/`h=` short option names, `scale`, `name` — none of it seen
+ * in real content here; a third key, an unrecognized `align` value, or
+ * either key repeated is left unrecognized rather than guessed at, same as
+ * the rest of this file's own conservative bias.
+ *
+ * @param text - the trailing text immediately after an image, e.g.
+ * `{width=300 align=center}`.
+ * @returns the recognized width and/or layout class (`null` for a
+ * recognized-but-inert `align=center`, `undefined` if no `align` token was
+ * present at all), or undefined if `text` is not exactly this shape.
+ */
+function parseWidthAndAlignAttr(
+  text: string
+): { width?: number; layoutClass?: string | null } | undefined {
+  const match = /^\{([^{}]*)\}$/.exec(text.trim());
+  if (!match) {
+    return undefined;
+  }
+
+  const tokens = match[1].trim().split(/\s+/).filter(Boolean);
+  if (tokens.length === 0 || tokens.length > 2) {
+    return undefined;
+  }
+
+  let width: number | undefined;
+  let align: "left" | "right" | "center" | undefined;
+  for (const token of tokens) {
+    const widthMatch = WIDTH_TOKEN.exec(token);
+    if (widthMatch && width === undefined) {
+      width = Number(widthMatch[1]);
+      continue;
+    }
+    const alignMatch = ALIGN_TOKEN.exec(token);
+    if (alignMatch && align === undefined) {
+      align = alignMatch[1] as "left" | "right" | "center";
+      continue;
+    }
+    return undefined;
+  }
+
+  if (width === undefined && align === undefined) {
+    return undefined;
+  }
+  return {
+    width,
+    layoutClass: align ? ALIGN_TO_LAYOUT_CLASS[align] : undefined,
+  };
+}
 
 type ParsedFigureInfo = {
   directive: FigureDirective;
@@ -119,24 +201,24 @@ function extractPlainCaption(children: Token[]): string | undefined {
 }
 
 /**
- * The single image and, if present, its recognized pixel width, from a
- * paragraph's inline children — the shape a `{figure-md}` body's image line
- * parses into.
+ * The single image and, if present, its recognized pixel width and/or
+ * alignment, from a paragraph's inline children — the shape a `{figure-md}`
+ * body's image line parses into.
  *
- * A width written as MyST attrs_inline (`{width=600}`) is not otherwise
- * understood by Outline's own image markdown, so it arrives here as ordinary
- * trailing text right after the image token. Anything besides exactly one
- * image, optionally followed by exactly that shape of trailing text, is not
- * recognized.
+ * MyST attrs_inline (`{width=600}`, `{width=300 align=center}`) is not
+ * otherwise understood by Outline's own image markdown, so it arrives here
+ * as ordinary trailing text right after the image token. Anything besides
+ * exactly one image, optionally followed by exactly that shape of trailing
+ * text, is not recognized.
  *
  * @param children - the image paragraph's inline child tokens.
- * @returns the image token and an optional width in pixels, or undefined if
- * the children are not exactly an image alone or an image plus a recognized
- * width attribute.
+ * @returns the image token and any recognized width/layout class, or
+ * undefined if the children are not exactly an image alone or an image plus
+ * a recognized attrs_inline attribute.
  */
 function extractImageAndWidth(
   children: Token[]
-): { image: Token; width?: number } | undefined {
+): { image: Token; width?: number; layoutClass?: string | null } | undefined {
   if (children.length === 1 && children[0].type === "image") {
     return { image: children[0] };
   }
@@ -145,9 +227,9 @@ function extractImageAndWidth(
     children[0].type === "image" &&
     children[1].type === "text"
   ) {
-    const match = WIDTH_ATTR.exec(children[1].content.trim());
-    if (match) {
-      return { image: children[0], width: Number(match[1]) };
+    const parsed = parseWidthAndAlignAttr(children[1].content.trim());
+    if (parsed) {
+      return { image: children[0], ...parsed };
     }
   }
   return undefined;
@@ -236,7 +318,7 @@ function tryBuildFigureMd(
     }
   }
 
-  const { image, width } = imageResult;
+  const { image, width, layoutClass } = imageResult;
   // The alt text on the image line itself and a separate caption paragraph
   // are two different things in MyST; Outline's image has room for only one.
   // The real templates leave the image line's alt empty, so prefer the
@@ -251,6 +333,10 @@ function tryBuildFigureMd(
     ...image.meta,
     caption: caption || existingAlt,
     ...(width ? { width } : {}),
+    // `layoutClass` may legitimately be `null` (a recognized but inert
+    // `align=center`) as opposed to `undefined` (no `align` token at all) —
+    // both are meaningful and neither should be dropped here.
+    ...(layoutClass !== undefined ? { layoutClass } : {}),
   };
 
   return buildFigureTokens(state, "figure-md", argument, image, "");

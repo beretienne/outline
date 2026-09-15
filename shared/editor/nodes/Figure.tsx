@@ -88,12 +88,23 @@ export default class Figure extends Node {
     state.write(`\n\`\`\`{${directive}}${argument ? ` ${argument}` : ""}\n`);
 
     if (directive === "figure-md") {
-      const widthAttr = image?.attrs.width
-        ? `{width=${image.attrs.width}}`
-        : "";
-      state.write(
-        `![](${state.esc(image?.attrs.src || "", false)})${widthAttr}`
-      );
+      const attrParts: string[] = [];
+      if (image?.attrs.width) {
+        attrParts.push(`width=${image.attrs.width}`);
+      }
+      // Only a real left/right override round-trips as `align=`; Outline's
+      // own default (no `layoutClass` override) is already what a MyST
+      // reader sees for `align=center` too, so there is nothing to write
+      // back for it — see `ALIGN_TO_LAYOUT_CLASS` in `rules/figures.ts` for
+      // the read side of this same asymmetry. `full-width`, an Outline-only
+      // layout with no `align` equivalent, is likewise left unwritten.
+      if (image?.attrs.layoutClass === "left-50") {
+        attrParts.push("align=left");
+      } else if (image?.attrs.layoutClass === "right-50") {
+        attrParts.push("align=right");
+      }
+      const attrs = attrParts.length ? `{${attrParts.join(" ")}}` : "";
+      state.write(`![](${state.esc(image?.attrs.src || "", false)})${attrs}`);
       state.closeBlock(node);
     } else {
       const optionLines: string[] = [];

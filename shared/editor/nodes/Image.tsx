@@ -551,9 +551,15 @@ export default class Image extends SimpleImage {
         // here as token meta rather than as this token's own alt text.
         alt: token.meta?.caption || token.content || null,
         ...parseTitleAttribute(token?.attrGet("title") || ""),
-        // Likewise a directive's own recognized pixel width, read from MyST
-        // attrs_inline rather than Outline's `=WxH` title suffix.
+        // Likewise a directive's own recognized pixel width and horizontal
+        // alignment, read from MyST attrs_inline (`{width=300 align=left}`)
+        // rather than Outline's `=WxH` title suffix. `layoutClass` is `null`
+        // by default already, so a recognized-but-inert `align=center` needs
+        // no special case here — only a real override is worth spreading in.
         ...(token.meta?.width ? { width: token.meta.width } : {}),
+        ...(token.meta?.layoutClass
+          ? { layoutClass: token.meta.layoutClass }
+          : {}),
       }),
     };
   }

@@ -630,6 +630,70 @@ describe("figure and figure-md become native figures", () => {
     );
   });
 
+  /**
+   * `{width=...}` combined with `{align=...}` in an image's trailing
+   * attrs_inline — the real shape `Underlying_concepts.md` uses
+   * (`![](...){align=center width=300}`) and which used to fall back to an
+   * inert code fence entirely, since the old width-only regex didn't match
+   * a second key at all. `align` only has a real Outline equivalent for
+   * `left`/`right` (`layoutClass`); `center` is recognized but produces no
+   * override, since that's already what an unadorned Outline image renders
+   * as — so it does not round-trip explicitly, only equivalently.
+   */
+  describe("figure-md recognizes align alongside width", () => {
+    test("the real case from Underlying_concepts.md: align=center width=300", () => {
+      const source =
+        ":::{figure-md} label\n![](pic.png){align=center width=300}\n\nCaption\n:::";
+      const once = roundTrip(source);
+      expect(once).toBe(
+        "```{figure-md} label\n![](pic.png){width=300}\n\nCaption\n\n```"
+      );
+      expect(roundTrip(once)).toBe(once);
+    });
+
+    test("order does not matter: width=300 align=center", () => {
+      const source =
+        ":::{figure-md} label\n![](pic.png){width=300 align=center}\n\nCaption\n:::";
+      expect(roundTrip(source)).toBe(
+        "```{figure-md} label\n![](pic.png){width=300}\n\nCaption\n\n```"
+      );
+    });
+
+    test("align=left is captured as a real override and round-trips explicitly", () => {
+      const source =
+        ":::{figure-md} label\n![](pic.png){align=left width=400px}\n\nCaption\n:::";
+      const once = roundTrip(source);
+      expect(once).toBe(
+        "```{figure-md} label\n![](pic.png){width=400 align=left}\n\nCaption\n\n```"
+      );
+      expect(roundTrip(once)).toBe(once);
+    });
+
+    test("align=right is captured as a real override and round-trips explicitly", () => {
+      const source =
+        ":::{figure-md} label\n![](pic.png){width=400 align=right}\n\nCaption\n:::";
+      const once = roundTrip(source);
+      expect(once).toBe(
+        "```{figure-md} label\n![](pic.png){width=400 align=right}\n\nCaption\n\n```"
+      );
+      expect(roundTrip(once)).toBe(once);
+    });
+
+    test("align=top — a real MyST value, but a vertical axis Outline's image has no equivalent for — is left unrecognized", () => {
+      // Falls back to the same inert, byte-exact code fence any other
+      // unrecognized attrs_inline shape already gets, rather than guessing.
+      const source =
+        ":::{figure-md} label\n![](pic.png){width=300 align=top}\n\nCaption\n:::";
+      expect(roundTrip(source)).toBe(source);
+    });
+
+    test("a third, unrecognized key is left unrecognized rather than dropped silently", () => {
+      const source =
+        ":::{figure-md} label\n![](pic.png){width=300 align=center scale=50}\n\nCaption\n:::";
+      expect(roundTrip(source)).toBe(source);
+    });
+  });
+
   test("a caption with emphasis flattens to plain text rather than being lost", () => {
     const source =
       ":::{figure-md} label\n![](pic.png)\n\nCamera wiring - *front view*\n:::";
