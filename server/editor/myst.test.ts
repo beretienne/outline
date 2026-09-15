@@ -1,3 +1,5 @@
+import fs from "fs";
+import path from "path";
 import { parser, schema, serializer } from ".";
 
 /**
@@ -351,7 +353,7 @@ describe("ifconfig, grid, grid-item and margin become real directive nodes", () 
       "::::{ifconfig} Class == 'A'\n:::{figure-md} label\n![](x.png)\n\nCaption\n:::\n::::";
     const once = roundTrip(source);
     expect(once).toBe(
-      "::::{ifconfig} Class == 'A'\n\n```{figure-md} label\n![](x.png)\n\nCaption\n\n```\n\n::::"
+      "::::{ifconfig} Class == 'A'\n```{figure-md} label\n![](x.png)\n\nCaption\n\n```\n\n::::"
     );
     expect(roundTrip(once)).toBe(once);
   });
@@ -588,6 +590,206 @@ describe("an unclaimed directive keeps its own option lines out of the body", ()
  * declines the whole figure rather than guess, leaving it exactly as inert
  * and byte-exact as any other directive Outline has no node for.
  */
+/**
+ * `{glossary}`'s own body — an RST/docutils definition list (`Term\n
+ * Definition text`, indent-only, no `:`/`~` marker — verified against
+ * docutils' own spec, and against the real content, that this is what a
+ * Sphinx `glossary` directive's body actually is; MyST's own top-level
+ * `deflist` extension uses a different, colon-marked syntax that does not
+ * apply here). All or nothing per `{glossary}` block, the same bar every
+ * other directive-body parser in this codebase holds itself to: if any
+ * entry does not fit — a blank line between a term and its own definition,
+ * something that is not ordinary block content — none of it becomes a
+ * `definition_list`, and the whole fence stays the byte-exact opaque
+ * `CodeFence` it already was.
+ */
+describe("glossary becomes a real definition list", () => {
+  test("a simple two-entry glossary", () => {
+    const source =
+      ":::{glossary}\nANPR\n   Stands for Automatic Number Plate Recognition.\n\nANPR camera\n   A camera with ANPR capabilities.\n:::";
+    const once = roundTrip(source);
+    expect(once).toBe(
+      ":::{glossary}\nANPR\n   Stands for Automatic Number Plate Recognition.\n\nANPR camera\n   A camera with ANPR capabilities.\n\n:::"
+    );
+    expect(roundTrip(once)).toBe(once);
+  });
+
+  test("a multi-paragraph definition stays one definition, not two", () => {
+    const source =
+      ":::{glossary}\nTerm\n   First paragraph.\n\n   Second paragraph, same definition.\n:::";
+    const once = roundTrip(source);
+    const doc = parser.parse(once);
+    let termCount = 0;
+    doc?.descendants((node) => {
+      if (node.type.name === "definition_term") {
+        termCount++;
+      }
+      return true;
+    });
+    expect(termCount).toBe(1);
+    expect(roundTrip(once)).toBe(once);
+  });
+
+  test("the real 'Camera security keys pair' shape: bold sub-headers, a bullet list, and text: followed by a bare --- stays prose + a thematic break, not a heading", () => {
+    // A real, verified hazard: with no blank line between them, CommonMark's
+    // own setext rule reads "text:" + "---" as an <h2> instead of the prose
+    // + RST transition it actually is here.
+    const source = [
+      ":::{glossary}",
+      "",
+      "Camera security keys pair",
+      "   In {{PR}} cameras:",
+      "   ---",
+      "   **Keys to validate ANPR winners**",
+      "",
+      "   The {{SSA}} uses the public key obtained from the camera to:",
+      "   - Validate that ANPR winners received from this camera originate from this camera.",
+      "   - Ensure the authenticity of measurements and observations.",
+      ":::",
+    ].join("\n");
+    const once = roundTrip(source);
+    const doc = parser.parse(once);
+    const types: string[] = [];
+    doc?.descendants((node) => {
+      types.push(node.type.name);
+      return true;
+    });
+    expect(types).not.toContain("heading");
+    expect(types).toContain("hr");
+    expect(types).toContain("bullet_list");
+    expect(roundTrip(once)).toBe(once);
+  });
+
+  test("the real 'Detection field' entry: a nested {grid} > {grid-item} > {figure-md} tree", () => {
+    const source = [
+      ":::{glossary}",
+      "",
+      "Detection field",
+      "   OIML R 91 3.3.10: The section of road containing all possible locations of a detection point.",
+      "",
+      "   :::::{grid} 2",
+      "",
+      "   ::::{grid-item}",
+      "   :::{figure-md} detection-field-and-projection-illustration",
+      "   ![](media/detection_field_view_from_camera.001.png){width=300 align=center}",
+      "",
+      "   *Detection field* - Camera View - Shorter Field of View",
+      "   :::",
+      "   ::::",
+      "",
+      "   ::::{grid-item}",
+      "",
+      "   :::{figure-md}",
+      "   ![](media/detection_field_view.001.png){width=300 align=center}",
+      "",
+      "   *Detection field* - Shorter Field of View",
+      "   :::",
+      "   ::::",
+      "   :::::",
+      ":::",
+    ].join("\n");
+    const once = roundTrip(source);
+    const doc = parser.parse(once);
+    let figureCount = 0;
+    let gridItemCount = 0;
+    doc?.descendants((node) => {
+      if (node.type.name === "figure") {
+        figureCount++;
+      }
+      if (
+        node.type.name === "container_directive" &&
+        node.attrs.directive === "grid-item"
+      ) {
+        gridItemCount++;
+      }
+      return true;
+    });
+    expect(figureCount).toBe(2);
+    expect(gridItemCount).toBe(2);
+    expect(roundTrip(once)).toBe(once);
+  });
+
+  test("the real 'Model approval parameter' entry: a nested {ifconfig} wrapping a table", () => {
+    const source = [
+      ":::{glossary}",
+      "",
+      "Model approval parameter",
+      "   Selects the applicable model approval reference.",
+      "",
+      "   :::{ifconfig} Class == 'A'",
+      "",
+      "   | model approval reference | Model approval number |",
+      "   | --- | --- |",
+      "   | {{ASS}} | XXXXXXXXXXX |",
+      "   :::",
+      "   :::{ifconfig} Class == 'C'",
+      "   ",
+      "   :::",
+      ":::",
+    ].join("\n");
+    const once = roundTrip(source);
+    const doc = parser.parse(once);
+    let tableCount = 0;
+    doc?.descendants((node) => {
+      if (node.type.name === "table") {
+        tableCount++;
+      }
+      return true;
+    });
+    expect(tableCount).toBe(1);
+    // The second, empty ifconfig must not gain a phantom checkbox.
+    expect(JSON.stringify(doc?.toJSON())).not.toContain("checkbox");
+    expect(roundTrip(once)).toBe(once);
+  });
+
+  test("a blank line between a term and its own definition declines the whole block", () => {
+    // Docutils requires the definition to start on the very next line, no
+    // gap — violating that anywhere makes the whole thing not a definition
+    // list, and this falls back to the same byte-exact opaque fence any
+    // other unrecognized body already gets, rather than guessing.
+    const source =
+      ":::{glossary}\nTerm\n\n   Definition after a blank line.\n:::";
+    expect(roundTrip(source)).toBe(source);
+  });
+
+  test("a term with no indented content at all declines the whole block", () => {
+    const source = ":::{glossary}\nTerm one\nTerm two\n:::";
+    expect(roundTrip(source)).toBe(source);
+  });
+
+  test("the real Terms_Definitions_Concepts.md file round-trips stably", () => {
+    // The actual file this step exists for: most entries become real
+    // definition lists, and the one block where bare `%` RST comments sit
+    // between entries — not part of any definition, and not indented,
+    // which the comment lines' own continuation lines also are not —
+    // correctly declines rather than misreading a comment as a term. That
+    // block stays the byte-exact opaque fence it already was; nothing
+    // anywhere in the file is lost, and the whole file settles on the
+    // first pass.
+    const filePath = path.join(
+      "/var/www/doc-model-approval/source_install/2_Glossary",
+      "Terms_Definitions_Concepts.md"
+    );
+    let source: string;
+    try {
+      source = fs.readFileSync(filePath, "utf-8");
+    } catch {
+      return; // Not available outside this machine's checkout — skip quietly.
+    }
+    const once = roundTrip(source);
+    expect(roundTrip(once)).toBe(once);
+    const doc = parser.parse(once);
+    let deflistCount = 0;
+    doc?.descendants((node) => {
+      if (node.type.name === "definition_list") {
+        deflistCount++;
+      }
+      return true;
+    });
+    expect(deflistCount).toBeGreaterThan(0);
+  });
+});
+
 describe("figure and figure-md become native figures", () => {
   test("the real template from the QCAM5 install manual", () => {
     const source =

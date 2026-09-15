@@ -2,7 +2,10 @@ import type MarkdownIt from "markdown-it";
 import type StateBlock from "markdown-it/lib/rules_block/state_block.mjs";
 import type Token from "markdown-it/lib/token.mjs";
 import customFence from "markdown-it-container";
-import { parseDirectiveInfo } from "./directives";
+import {
+  DIRECTIVES_WITH_CUSTOM_BODY_PARSING,
+  parseDirectiveInfo,
+} from "./directives";
 
 /**
  * Every MyST admonition directive. Sphinx gives them each their own colour, but
@@ -224,16 +227,23 @@ const COLON_MARKER_CODE = ":".charCodeAt(0);
  *
  * - A recognized admonition — hands the line to `container_notice`, unchanged
  *   from today.
- * - An allowlisted generic directive (`{ifconfig}`, `{grid}`, `{grid-item}`,
- *   `{margin}` — see `directives.ts`) — hands the line to
- *   `container_directive`, registered the same way.
+ * - An allowlisted generic directive whose body is ordinary block content
+ *   (`{ifconfig}`, `{grid}`, `{grid-item}`, `{margin}` — see
+ *   `directives.ts`) — hands the line to `container_directive`, registered
+ *   the same way.
  *
- * Anything else — including `{glossary}`, deliberately not on that allowlist
- * (its body is an indentation-significant definition list, which would
- * silently lose the indent that makes it one if flattened into ordinary
- * blocks) — is read here as one opaque block, the same bargain the backtick
- * path already makes for a directive Outline has no node for: the fence
- * survives as an inert `code_fence`, complete with the original marker
+ * `{glossary}` is on `DIRECTIVE_ALLOWLIST` too, but is deliberately *not*
+ * deferred to here (`DIRECTIVES_WITH_CUSTOM_BODY_PARSING`): its body is an
+ * indentation-significant definition list, which the generic parse either
+ * of the above would give it — flattening every term into its own
+ * definition's first paragraph — is exactly wrong for. It needs the same
+ * opaque-fence treatment described below, so `shared/editor/rules/deflist.ts`'s
+ * own dedicated rule (registered much later, after this whole pass) can find
+ * it as a plain, untouched fence token and read the indentation itself.
+ *
+ * Anything else is read here as one opaque block, the same bargain the
+ * backtick path already makes for a directive Outline has no node for: the
+ * fence survives as an inert `code_fence`, complete with the original marker
  * character and run length, so it renders as a grey code block and writes
  * itself back out exactly as written.
  *
@@ -268,9 +278,11 @@ function unclaimedColonFence(md: MarkdownIt): void {
 
       const markup = state.src.slice(openStart, pos);
       const params = state.src.slice(pos, max);
+      const directive = parseDirectiveInfo(params, { allowBare: true });
       if (
         parseNoticeInfo(params, { allowBare: true }) ||
-        parseDirectiveInfo(params, { allowBare: true })
+        (directive &&
+          !DIRECTIVES_WITH_CUSTOM_BODY_PARSING.includes(directive.directive))
       ) {
         return false;
       }
@@ -279,8 +291,19 @@ function unclaimedColonFence(md: MarkdownIt): void {
         return true;
       }
 
+      // Nesting-depth tracking: a body this rule captures whole can itself
+      // hold further colon fences (a {glossary} entry nesting {grid} >
+      // {grid-item} > {figure-md}, in real content), and a plain scan for
+      // "the next bare closer at least this long" — the entire rest of this
+      // loop, before this comment was added — stops at the *first* one it
+      // finds, which is very likely a nested fence's own closer, not this
+      // one's, once anything is nested three colon-fences deep. Every line
+      // that opens a further colon fence (a colon run followed by anything
+      // but blank/EOL) increments depth; a bare closer only counts as
+      // *this* fence's own once depth has unwound back to zero.
       let nextLine = startLine;
       let haveEndMarker = false;
+      let depth = 0;
       for (;;) {
         nextLine++;
         if (nextLine >= endLine) {
@@ -303,12 +326,28 @@ function unclaimedColonFence(md: MarkdownIt): void {
 
         const closeStart = closePos;
         closePos = state.skipChars(closePos, COLON_MARKER_CODE);
-        // A closing fence must be at least as long as the one that opened it.
-        if (closePos - closeStart < markerLength) {
+        const runLength = closePos - closeStart;
+        if (runLength < MIN_COLON_MARKERS) {
           continue;
         }
-        closePos = state.skipSpaces(closePos);
-        if (closePos < closeMax) {
+        const afterRun = state.skipSpaces(closePos);
+        const isBare = afterRun >= closeMax;
+
+        if (!isBare) {
+          // A colon run followed by more than whitespace opens a further
+          // nested fence, not a closer at all — bump depth and keep going.
+          depth++;
+          continue;
+        }
+        if (depth > 0) {
+          // Closes whichever nested fence is currently innermost, not this
+          // one — its own length does not need to match this fence's own
+          // marker length, only its own opener's.
+          depth--;
+          continue;
+        }
+        // A closing fence must be at least as long as the one that opened it.
+        if (runLength < markerLength) {
           continue;
         }
 

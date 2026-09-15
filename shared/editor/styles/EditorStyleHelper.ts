@@ -122,6 +122,17 @@ export class EditorStyleHelper {
   /** A directive block's content area. */
   static readonly directiveContent = "directive-content";
 
+  // Definition lists
+
+  /** A definition list wrapper (`{glossary}`'s own content). */
+  static readonly definitionList = "definition-list";
+
+  /** A single entry's term. */
+  static readonly definitionTerm = "definition-term";
+
+  /** A single entry's definition body. */
+  static readonly definitionBody = "definition-body";
+
   // Suggestions
 
   /** Trigger character and search term while a suggestion menu is open */

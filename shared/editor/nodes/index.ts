@@ -23,6 +23,9 @@ import CheckboxItem from "./CheckboxItem";
 import CheckboxList from "./CheckboxList";
 import CodeBlock from "./CodeBlock";
 import CodeFence from "./CodeFence";
+import DefinitionBody from "./DefinitionBody";
+import DefinitionList from "./DefinitionList";
+import DefinitionTerm from "./DefinitionTerm";
 import Directive from "./Directive";
 import Doc from "./Doc";
 import Embed from "./Embed";
@@ -131,6 +134,9 @@ export const richExtensions: Nodes = [
   // catch-all ever sees it, or it never would.
   Directive,
   Notice,
+  DefinitionList,
+  DefinitionTerm,
+  DefinitionBody,
   Heading,
   HeadingPrefix,
   HorizontalRule,

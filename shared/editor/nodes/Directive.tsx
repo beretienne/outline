@@ -92,7 +92,7 @@ export default class Directive extends Node {
         },
       },
       content:
-        "(list | blockquote | hr | paragraph | heading | code_block | code_fence | attachment | figure | table | container_notice | container_directive)+",
+        "(list | blockquote | hr | paragraph | heading | code_block | code_fence | attachment | figure | table | container_notice | container_directive | definition_list)+",
       group: "block",
       defining: true,
       draggable: true,

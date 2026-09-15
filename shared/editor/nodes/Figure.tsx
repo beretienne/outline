@@ -85,7 +85,17 @@ export default class Figure extends Node {
     const argument: string =
       directive === "figure-md" ? node.attrs.label : image?.attrs.src || "";
 
-    state.write(`\n\`\`\`{${directive}}${argument ? ` ${argument}` : ""}\n`);
+    // `write` only applies the current list-item/definition-body
+    // indentation once, at the start of the string it's given — a leading
+    // "\n" packed into the same string as the fence (as this used to do)
+    // starts a fresh line the prefix never reaches, so a figure nested
+    // inside indented content (a definition's own body, in particular) had
+    // its opening fence come out flush left instead of indented with
+    // everything around it. `ensureNewLine` plus a separate `write` call
+    // each get their own, correctly-prefixed turn — see the identical fix
+    // and comment on `Notice.toMarkdown`/`Directive.toMarkdown`.
+    state.ensureNewLine();
+    state.write(`\`\`\`{${directive}}${argument ? ` ${argument}` : ""}\n`);
 
     if (directive === "figure-md") {
       const attrParts: string[] = [];

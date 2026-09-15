@@ -1475,6 +1475,34 @@ ${
   min-width: 0;
 }
 
+/* A {glossary}'s own body — a definition list, term immediately followed by
+   its own indented definition, no callout or fence styling of its own since
+   this is prose structure, not a directive wrapper. */
+.${EditorStyleHelper.definitionList} {
+  margin: 8px 0;
+}
+
+.${EditorStyleHelper.definitionTerm} {
+  font-weight: 600;
+  margin-top: 8px;
+
+  &:first-child {
+    margin-top: 0;
+  }
+}
+
+.${EditorStyleHelper.definitionBody} {
+  margin: 0 0 0 1.5em;
+
+  p:first-child {
+    margin-top: 0;
+  }
+
+  p:last-child {
+    margin-bottom: 0;
+  }
+}
+
 blockquote {
   margin: 0;
   padding: 8px 10px 8px 1.5em;

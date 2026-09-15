@@ -13,12 +13,34 @@ const OPTION_LINE = /^:[A-Za-z0-9_-]+:(?:\s|$)/;
  * MyST directive names Outline gives a real, structured node to instead of
  * the inert `CodeFence` every other directive falls back to. Deliberately
  * narrow: each of these has a body that is ordinary block content (prose,
- * lists, tables, figures, nested directives), unlike `{glossary}`'s
- * indentation-significant definition list, which needs a real deflist node
- * (not built yet) before it could round-trip safely as anything other than
- * opaque text.
+ * lists, tables, figures, nested directives).
+ *
+ * `"glossary"` is on this list too, but does **not** go through the generic
+ * body parsing every other entry here does — see
+ * `DIRECTIVES_WITH_CUSTOM_BODY_PARSING` right below. It needs to be on this
+ * list regardless: `Directive.parseMarkdown`'s `getAttrs` derives
+ * `directive`/`argument` from `parseDirectiveInfo`, which checks this same
+ * list, on every parse — including the one after `deflist.ts`'s own rule has
+ * already built the node once.
  */
-export const DIRECTIVE_ALLOWLIST = ["ifconfig", "grid", "grid-item", "margin"];
+export const DIRECTIVE_ALLOWLIST = [
+  "ifconfig",
+  "grid",
+  "grid-item",
+  "margin",
+  "glossary",
+];
+
+/**
+ * Directives on `DIRECTIVE_ALLOWLIST` whose body is not ordinary block
+ * content, and so must not be claimed by `container_directive`'s own
+ * generic native recursive parse below — `"glossary"`'s body is an
+ * indentation-significant definition list (`shared/editor/rules/deflist.ts`
+ * owns it instead); merging every term into its own definition's first
+ * paragraph, which the generic parse would do, is exactly the loss keeping
+ * `{glossary}` off `DIRECTIVE_ALLOWLIST` entirely used to prevent.
+ */
+export const DIRECTIVES_WITH_CUSTOM_BODY_PARSING = ["glossary"];
 
 export type ParsedDirective = {
   /** The directive name, without braces, e.g. "ifconfig". */
@@ -65,7 +87,10 @@ export function parseDirectiveInfo(
  * `notices.ts`'s `UNCONTAINABLE_BLOCKS` makes: a fence carrying one of these
  * is left as the inert `CodeFence` it already is, rather than built into a
  * node that cannot hold it and silently dropping content. */
-const DIRECTIVE_UNCONTAINABLE_BLOCKS = ["math_block", "container_toggle_open"];
+export const DIRECTIVE_UNCONTAINABLE_BLOCKS = [
+  "math_block",
+  "container_toggle_open",
+];
 
 /**
  * Undo a colon-fenced directive whose body holds something `Directive`'s
@@ -174,10 +199,19 @@ function mystDirectiveFences(md: MarkdownIt): void {
 
     for (let i = tokens.length - 1; i >= 0; i--) {
       const token = tokens[i];
+      if (token.type !== "fence") {
+        continue;
+      }
+      const parsed = parseDirectiveInfo(token.info, { allowBare: false });
       if (
-        token.type !== "fence" ||
-        !parseDirectiveInfo(token.info, { allowBare: false })
+        !parsed ||
+        DIRECTIVES_WITH_CUSTOM_BODY_PARSING.includes(parsed.directive)
       ) {
+        // A directive with its own body parser (`deflist.ts`, for
+        // "glossary") needs this token left as plain `fence` — this rule's
+        // own generic parse below would merge every term into its
+        // definition's first paragraph, and that dedicated rule (registered
+        // later, via `push`) needs the untouched token to still find.
         continue;
       }
 
@@ -231,25 +265,28 @@ function directiveOptions(md: MarkdownIt): void {
       if (tokens[i].type !== "container_directive_open") {
         continue;
       }
+
       if (
-        tokens[i + 1]?.type !== "paragraph_open" ||
-        tokens[i + 2]?.type !== "inline" ||
-        tokens[i + 3]?.type !== "paragraph_close"
+        tokens[i + 1]?.type === "paragraph_open" &&
+        tokens[i + 2]?.type === "inline" &&
+        tokens[i + 3]?.type === "paragraph_close"
       ) {
-        continue;
+        const lines = tokens[i + 2].content.split("\n");
+        if (lines.every((line) => OPTION_LINE.test(line))) {
+          tokens[i].meta = { ...tokens[i].meta, options: lines.join("\n") };
+          tokens.splice(i + 1, 3);
+        }
       }
 
-      const lines = tokens[i + 2].content.split("\n");
-      if (!lines.every((line) => OPTION_LINE.test(line))) {
-        continue;
-      }
-
-      tokens[i].meta = { ...tokens[i].meta, options: lines.join("\n") };
-      tokens.splice(i + 1, 3);
-
-      // A directive must hold at least one block. When the options were the
-      // whole body, leave an empty paragraph behind rather than nothing —
-      // see `noticeOptions` for the phantom-checkbox bug this avoids.
+      // A directive must hold at least one block — whether the body was
+      // genuinely empty to begin with (a real, live case: `{ifconfig}`'s
+      // "else" branch with nothing in it yet) or the options above were
+      // the whole of it. Left alone, ProseMirror fills an empty content
+      // region with whichever of `Directive`'s own content alternatives it
+      // can trivially create — `list`, the first one — landing a phantom
+      // `- [ ]` in the document on every single save. An explicit empty
+      // paragraph forecloses that, the same fix `noticeOptions` already
+      // makes for the options-only case.
       if (tokens[i + 1]?.type === "container_directive_close") {
         const paragraphOpen = new state.Token("paragraph_open", "p", 1);
         paragraphOpen.block = true;
@@ -269,8 +306,13 @@ function directiveOptions(md: MarkdownIt): void {
 export default function directives(md: MarkdownIt): void {
   customFence(md, "directive", {
     marker: ":",
-    validate: (params: string) =>
-      !!parseDirectiveInfo(params, { allowBare: false }),
+    validate: (params: string) => {
+      const parsed = parseDirectiveInfo(params, { allowBare: false });
+      return (
+        !!parsed &&
+        !DIRECTIVES_WITH_CUSTOM_BODY_PARSING.includes(parsed.directive)
+      );
+    },
     render(tokens: Token[], idx: number) {
       const { info } = tokens[idx];
 

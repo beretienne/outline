@@ -100,7 +100,17 @@ export default class HorizontalRule extends Node {
   }
 
   toMarkdown(state: MarkdownSerializerState, node: ProsemirrorNode) {
-    state.write(`\n${node.attrs.markup}`);
+    // `write` only applies the current list-item/definition-body
+    // indentation once, at the start of the string it's given — a leading
+    // "\n" packed into the same string as the markup (as this used to do)
+    // starts a fresh line the prefix never reaches, so an hr nested inside
+    // indented content (a definition's own body, in particular) came out
+    // with the indent on a stray blank line and the markup itself flush
+    // left. `ensureNewLine` plus a separate `write` call each get their own,
+    // correctly-prefixed turn — see the identical fix and comment on
+    // `Notice.toMarkdown`/`Directive.toMarkdown`.
+    state.ensureNewLine();
+    state.write(node.attrs.markup);
     state.closeBlock(node);
   }
 
