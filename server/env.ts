@@ -258,6 +258,21 @@ export class Environment {
   );
 
   /**
+   * Optional URL to send the browser to right after a successful OIDC sign-in,
+   * instead of an Outline page. Useful when Outline sits behind an external
+   * portal that should remain the landing page. Unset to keep the default.
+   */
+  @IsOptional()
+  @IsUrl({
+    protocols: ["http", "https"],
+    require_protocol: true,
+    require_tld: false,
+  })
+  public OIDC_POST_LOGIN_REDIRECT_URL = this.toOptionalString(
+    environment.OIDC_POST_LOGIN_REDIRECT_URL
+  );
+
+  /**
    * The fully qualified, external facing domain name of the collaboration
    * service, if different (unlikely)
    */

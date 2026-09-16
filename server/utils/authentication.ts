@@ -152,6 +152,11 @@ export async function signIn(
       expires,
     });
 
+    if (env.OIDC_POST_LOGIN_REDIRECT_URL && service === "oidc") {
+      ctx.redirect(env.OIDC_POST_LOGIN_REDIRECT_URL);
+      return;
+    }
+
     const defaultCollectionId = team.defaultCollectionId;
 
     if (defaultCollectionId) {
