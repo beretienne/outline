@@ -117,6 +117,12 @@ export default function blockMenuItems(
       keywords: "picture photo img upload png jpg screenshot",
     },
     {
+      name: "figure",
+      title: t("Figure"),
+      icon: <ImageIcon />,
+      keywords: "myst sphinx caption image picture directive figure-md",
+    },
+    {
       name: "video",
       title: t("Video"),
       icon: <EmbedIcon />,

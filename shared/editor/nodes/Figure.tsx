@@ -1,5 +1,11 @@
 import type Token from "markdown-it/lib/token.mjs";
-import type { NodeSpec, Node as ProsemirrorNode } from "prosemirror-model";
+import type {
+  NodeSpec,
+  NodeType,
+  Node as ProsemirrorNode,
+} from "prosemirror-model";
+import type { Command } from "prosemirror-state";
+import { NodeSelection } from "prosemirror-state";
 import { figureMdImageAttrs } from "../lib/figureMarkdown";
 import figuresRule from "../rules/figures";
 import type { MarkdownSerializerState } from "../lib/markdown/serializer";
@@ -77,6 +83,53 @@ export default class Figure extends Node {
         },
         0,
       ],
+    };
+  }
+
+  commands({ type }: { type: NodeType }) {
+    return {
+      /**
+       * Wraps the selected image in a `{figure-md}` figure, so its caption
+       * becomes a visible one in a Sphinx build. Only for an image alone in
+       * its paragraph — a figure is a block, and cannot sit inside a line of
+       * text.
+       */
+      figure: (): Command => (state, dispatch) => {
+        const { selection, schema } = state;
+        if (
+          !(selection instanceof NodeSelection) ||
+          selection.node.type !== schema.nodes.image
+        ) {
+          return false;
+        }
+
+        const { $from } = selection;
+        const paragraph = $from.parent;
+        if (paragraph.type !== schema.nodes.paragraph) {
+          return false;
+        }
+        if (paragraph.childCount !== 1) {
+          return false;
+        }
+        if (
+          !$from
+            .node(-1)
+            .canReplaceWith($from.index(-1), $from.indexAfter(-1), type)
+        ) {
+          return false;
+        }
+
+        dispatch?.(
+          state.tr
+            .replaceWith(
+              $from.before(),
+              $from.after(),
+              type.create({ directive: "figure-md" }, selection.node)
+            )
+            .scrollIntoView()
+        );
+        return true;
+      },
     };
   }
 

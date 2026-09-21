@@ -1,5 +1,6 @@
 import { t } from "i18next";
 import { v4 as uuidv4 } from "uuid";
+import type { Node as ProsemirrorNode, Schema } from "prosemirror-model";
 import type { EditorView } from "prosemirror-view";
 import type { EditorNotice } from "../types";
 import FileHelper from "../lib/FileHelper";
@@ -12,6 +13,11 @@ export type Options = {
   isAttachment?: boolean;
   /** Set to true to replace any existing image at the users selection */
   replaceExisting?: boolean;
+  /**
+   * Set to true to wrap an uploaded image in a MyST `{figure-md}` figure
+   * rather than insert it bare. Ignored where the schema has no figure node.
+   */
+  asFigure?: boolean;
   /** Callback fired to upload a file */
   uploadFile?: (
     file: File | string,
@@ -42,6 +48,26 @@ export type Options = {
     preview?: boolean;
   };
 };
+
+/**
+ * The node an uploaded image is inserted as: the image itself, or — when
+ * asked for and the schema has one — a `{figure-md}` figure holding it.
+ *
+ * @param schema - the editor's schema.
+ * @param imageAttrs - attributes for the image node.
+ * @param asFigure - whether to wrap the image in a figure.
+ * @returns the node to insert.
+ */
+export function uploadedImageNode(
+  schema: Schema,
+  imageAttrs: Record<string, unknown>,
+  asFigure = false
+): ProsemirrorNode {
+  const image = schema.nodes.image.create(imageAttrs);
+  return asFigure && schema.nodes.figure
+    ? schema.nodes.figure.create({ directive: "figure-md" }, image)
+    : image;
+}
 
 const insertFiles = async function (
   view: EditorView,
@@ -158,12 +184,16 @@ const insertFiles = async function (
                 .replaceWith(
                   from,
                   to || from,
-                  schema.nodes.image.create({
-                    src,
-                    source: upload.source,
-                    ...upload.dimensions,
-                    ...options.attrs,
-                  })
+                  uploadedImageNode(
+                    schema,
+                    {
+                      src,
+                      source: upload.source,
+                      ...upload.dimensions,
+                      ...options.attrs,
+                    },
+                    options.asFigure
+                  )
                 )
                 .setMeta(uploadPlaceholderPlugin, { remove: { id: upload.id } })
             );

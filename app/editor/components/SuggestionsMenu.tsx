@@ -410,6 +410,14 @@ function SuggestionsMenu<T extends MenuItem>(props: Props<T>) {
             AttachmentValidation.imageContentTypes.join(", "),
             attrs
           );
+        case "figure":
+          return triggerFilePick(
+            AttachmentValidation.imageContentTypes.join(", "),
+            {
+              ...attrs,
+              asFigure: true,
+            }
+          );
         case "video":
           return triggerFilePick("video/*", attrs);
         case "attachment":
@@ -507,8 +515,12 @@ function SuggestionsMenu<T extends MenuItem>(props: Props<T>) {
       if (accept) {
         inputRef.current.accept = accept;
       }
+      // Always reset: the input is reused, and attributes left over from an
+      // earlier pick (a figure's, say) would otherwise apply to the next one.
       if (attrs) {
         inputRef.current.dataset.attrs = JSON.stringify(attrs);
+      } else {
+        delete inputRef.current.dataset.attrs;
       }
       inputRef.current.click();
     }
@@ -531,9 +543,9 @@ function SuggestionsMenu<T extends MenuItem>(props: Props<T>) {
     } = props;
     const files = getEventFiles(event);
     const parent = findParentNode((node) => !!node)(view.state.selection);
-    const attrs = event.currentTarget.dataset.attrs
+    const { asFigure, ...attrs } = event.currentTarget.dataset.attrs
       ? JSON.parse(event.currentTarget.dataset.attrs)
-      : undefined;
+      : ({} as Record<string, unknown>);
 
     handleClearSearch();
 
@@ -549,6 +561,7 @@ function SuggestionsMenu<T extends MenuItem>(props: Props<T>) {
         onFileUploadProgress,
         onNotice: toastNotice,
         isAttachment: inputRef.current?.accept === "*",
+        asFigure: asFigure === true,
         attrs,
       });
     }
@@ -639,7 +652,7 @@ function SuggestionsMenu<T extends MenuItem>(props: Props<T>) {
       }
 
       // If no image upload callback has been passed, filter the image block out
-      if (!uploadFile && item.name === "image") {
+      if (!uploadFile && (item.name === "image" || item.name === "figure")) {
         return false;
       }
 
