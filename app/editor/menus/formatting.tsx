@@ -21,6 +21,7 @@ import {
   TableSplitCellsIcon,
   PaletteIcon,
   CollapseIcon,
+  LibraryIcon,
 } from "outline-icons";
 import { v4 as uuidv4 } from "uuid";
 import CellBackgroundColorPicker from "../components/CellBackgroundColorPicker";
@@ -461,6 +462,15 @@ export default function formattingMenuItems(ctx: SelectionContext): MenuItem[] {
       icon: <CodeIcon />,
       active: isMarkActive(schema.marks.code_inline),
       visible: canFormat,
+    },
+    {
+      // MyST's {term} role. Only the rich editor's schema has the mark.
+      name: "term_reference",
+      group: MenuItemGroup.inline,
+      tooltip: t("Glossary term"),
+      icon: <LibraryIcon />,
+      active: isMarkActive(schema.marks.term_reference),
+      visible: canFormat && !!schema.marks.term_reference,
     },
     {
       name: "separator",

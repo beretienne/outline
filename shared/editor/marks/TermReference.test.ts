@@ -1,6 +1,7 @@
 import { inputRules } from "prosemirror-inputrules";
 import { EditorState, TextSelection } from "prosemirror-state";
 import { extensionManager, p, schema } from "@shared/test/editor";
+import { toggleMark } from "../commands/toggleMark";
 
 /**
  * Types `text` one character at a time through the editor's real, full
@@ -85,5 +86,34 @@ describe("TermReference input rule", () => {
         .addToSet(text.marks)
         .map((m) => m.type)
     ).toEqual([term]);
+  });
+
+  it("toggles on a selection the way the toolbar does, dropping bold", () => {
+    const { term_reference: term, strong } = schema.marks;
+    let state = EditorState.create({
+      doc: schema.nodes.doc.create(null, [
+        schema.nodes.paragraph.create(null, [
+          schema.text("see "),
+          schema.text("field of view", [strong.create()]),
+        ]),
+      ]),
+      schema,
+    });
+    state = state.apply(
+      state.tr.setSelection(TextSelection.create(state.doc, 5, 18))
+    );
+
+    toggleMark(term)(state, (tr: EditorState["tr"]) => {
+      state = state.apply(tr);
+    });
+    const marked = state.doc.firstChild!.child(1);
+    expect(marked.text).toBe("field of view");
+    expect(marked.marks.map((m) => m.type.name)).toEqual(["term_reference"]);
+
+    toggleMark(term)(state, (tr: EditorState["tr"]) => {
+      state = state.apply(tr);
+    });
+    expect(state.doc.firstChild!.textContent).toBe("see field of view");
+    expect(state.doc.firstChild!.child(0).marks).toEqual([]);
   });
 });
