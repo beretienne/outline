@@ -169,8 +169,35 @@ export default class ComponentView {
       element !== this.contentDOM.parentElement
     ) {
       element.appendChild(this.contentDOM);
+      this.restoreSelectionInContent();
     }
   };
+
+  /**
+   * React mounts the content element after ProseMirror has already tried to
+   * write its selection to the DOM, at which point `contentDOM` was still
+   * detached – the browser drops a caret placed in a detached node, so a node
+   * freshly created around the cursor (e.g. from the block menu) left the
+   * caret outside of itself. Once the content is attached, place the caret
+   * where the editor state says it is.
+   */
+  private restoreSelectionInContent() {
+    const { selection } = this.view.state;
+    if (!selection.empty || !this.view.hasFocus()) {
+      return;
+    }
+
+    const pos = this.getPos();
+    if (selection.from <= pos || selection.from >= pos + this.node.nodeSize) {
+      return;
+    }
+
+    const { node, offset } = this.view.domAtPos(selection.from);
+    if (!this.contentDOM?.contains(node)) {
+      return;
+    }
+    window.getSelection()?.collapse(node, offset);
+  }
 
   stopEvent(event: Event) {
     if (
