@@ -231,6 +231,62 @@ that form survives editing in Outline untouched:
 
 Otherwise leaving images at their natural size is perfectly fine.
 
+### Captions: a caption in Outline is *not* a caption in the manual
+
+Outline lets you write a caption under any image. That text is stored as the
+image's **alt text** — `![your caption](media/photo.png)` — and that is all
+it is to Sphinx: a description for screen readers, shown only if the image
+cannot load. **It does not appear under the picture in the built manual.**
+
+**When the manual needs a visible caption, use a `{figure-md}`:**
+
+````markdown
+```{figure-md} optional-label
+![](media/photo.png){width=600}
+
+The caption, as it should appear under the picture.
+```
+````
+
+Paste that in (or import a page that has one) and Outline shows it as an
+ordinary image with its caption, fully editable — resize it, align it,
+rewrite the caption — and saves it back as the same `{figure-md}`, label
+included. An image that did *not* arrive as a `{figure-md}` stays a plain
+image, caption or not; Outline never turns one into the other on its own.
+
+#### The installation-wide switch: `MYST_FIGURE_FOR_CAPTIONED_IMAGES`
+
+An administrator can set `MYST_FIGURE_FOR_CAPTIONED_IMAGES=true` in the
+server environment. It is **off by default**. With it on, whenever a document
+is turned into Markdown — the API's `text`, exports, downloads, copy as
+Markdown, and therefore everything the sync tool pulls — an image is written
+as a `{figure-md}` instead of `![caption](…)` when **all** of these hold:
+
+- it has a caption;
+- it stands alone in its paragraph (not mid-sentence, not next to another
+  image);
+- it is not inside a table cell;
+- it is not a link, not a diagrams.net diagram, and has no title.
+
+Every other image is written exactly as before. Width and left/right
+alignment carry over (`{width=300 align=left}`); the figure gets no label,
+since Outline has nowhere to type one for a plain image — add it in the
+source afterwards if something needs to cross-reference it.
+
+What to know before turning it on:
+
+- **It applies to the whole installation**, every collection, including pages
+  that are not headed for Sphinx. Any other Markdown reader shows a
+  `{figure-md}` as a code block.
+- **Nothing stored in Outline changes.** Only the Markdown written out does;
+  switch it off and the plain image form comes back. The change becomes
+  permanent for a page only once that Markdown is brought back *in* (a sync
+  push, an import): from then on the image is a real `{figure-md}` and stays
+  one whatever the switch says.
+- **It is the migration path**: switch on, pull, and every captioned image in
+  the pulled files is a figure; push those files back and they are figures in
+  Outline too.
+
 ---
 
 ## Links

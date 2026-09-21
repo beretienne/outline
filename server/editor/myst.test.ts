@@ -1234,3 +1234,65 @@ describe("{term} role becomes a term_reference mark", () => {
     ).toBe(false);
   });
 });
+
+/**
+ * `MYST_FIGURE_FOR_CAPTIONED_IMAGES` — opt-in, per installation. Off, a
+ * captioned image is the plain `![caption](src)` it always was; on, one
+ * standing alone in its paragraph is written as a `{figure-md}`.
+ */
+describe("captioned images as {figure-md}", () => {
+  const FLAG = "MYST_FIGURE_FOR_CAPTIONED_IMAGES";
+  const original = process.env[FLAG];
+
+  afterEach(() => {
+    if (original === undefined) {
+      delete process.env[FLAG];
+    } else {
+      process.env[FLAG] = original;
+    }
+  });
+
+  const captioned = "![A camera](media/photo.png)";
+
+  test("off by default: a captioned image stays a plain image", () => {
+    delete process.env[FLAG];
+    expect(roundTrip(captioned).trim()).toBe(captioned);
+  });
+
+  test("on: a lone captioned image is written as {figure-md}", () => {
+    process.env[FLAG] = "true";
+    const once = roundTrip(captioned);
+    expect(once.trim()).toBe(
+      "```{figure-md}\n![](media/photo.png)\n\nA camera\n\n```"
+    );
+    // Same shape `Figure` itself writes (blank line before the closing fence
+    // included). It reads back as a real Figure, and is stable from there.
+    expect(parser.parse(once)?.firstChild?.type).toBe(schema.nodes.figure);
+    expect(roundTrip(once)).toBe(once);
+  });
+
+  test("on: width and alignment carry over", () => {
+    process.env[FLAG] = "true";
+    const once = roundTrip('![A camera](media/photo.png "left-50 =300x200")');
+    expect(once).toContain("![](media/photo.png){width=300 align=left}");
+  });
+
+  test.each([
+    ["no caption", "![](media/photo.png)"],
+    ["image mid-sentence", "See ![icon](media/icon.png) here."],
+    ["two images in one paragraph", "![a](a.png) ![b](b.png)"],
+    ["linked image", "[![A camera](media/photo.png)](https://example.com)"],
+    ["image in a table cell", "| a |\n|---|\n| ![A camera](media/photo.png) |"],
+  ])("on: left alone — %s", (_name, source) => {
+    process.env[FLAG] = "true";
+    expect(roundTrip(source)).not.toContain("{figure-md}");
+  });
+
+  test("on: turning it off again brings the plain image back", () => {
+    const doc = parser.parse(captioned);
+    process.env[FLAG] = "true";
+    expect(serializer.serialize(doc!)).toContain("{figure-md}");
+    delete process.env[FLAG];
+    expect(serializer.serialize(doc!).trim()).toBe(captioned);
+  });
+});

@@ -258,6 +258,20 @@ export class Environment {
   );
 
   /**
+   * Write a captioned image that stands alone in its paragraph as a MyST
+   * `{figure-md}` directive when a document is serialized to Markdown (API
+   * `text`, export, copy as Markdown), instead of `![caption](src)`. For
+   * installations whose Markdown is built by Sphinx, where a plain image's
+   * caption is only ever invisible alt text. Stored documents are not
+   * changed. Defaults to false.
+   */
+  @Public
+  @IsBoolean()
+  public MYST_FIGURE_FOR_CAPTIONED_IMAGES = this.toBoolean(
+    environment.MYST_FIGURE_FOR_CAPTIONED_IMAGES ?? "false"
+  );
+
+  /**
    * Optional URL to send the browser to right after a successful OIDC sign-in,
    * instead of an Outline page. Useful when Outline sits behind an external
    * portal that should remain the landing page. Unset to keep the default.
