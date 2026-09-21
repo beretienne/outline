@@ -1,6 +1,13 @@
 import type { Node as ProsemirrorNode } from "prosemirror-model";
 import { TextSelection } from "prosemirror-state";
-import { createEditorState, p, schema } from "@shared/test/editor";
+import {
+  createEditorState,
+  definitionBody,
+  definitionList,
+  definitionTerm,
+  p,
+  schema,
+} from "@shared/test/editor";
 import { deleteEmptyDirectiveOrNotice } from "./deleteEmptyDirective";
 
 function directive(
@@ -80,5 +87,84 @@ describe("deleteEmptyDirectiveOrNotice", () => {
     expect(doc.child(0).attrs.directive).toBe("grid");
     expect(doc.child(0).childCount).toBe(1);
     expect(doc.child(0).firstChild!.type.name).toBe("paragraph");
+  });
+
+  it("removes a {glossary} whose only entry is still blank, from the term", () => {
+    const testDoc = schema.nodes.doc.create(null, [
+      p("before"),
+      directive("glossary", "", [
+        definitionList(definitionTerm(""), definitionBody([p("")])),
+      ]),
+    ]);
+    // +1 directive, +1 list, +1 term.
+    const pos = testDoc.firstChild!.nodeSize + 3;
+    const { applied, doc } = run(testDoc, pos);
+
+    expect(applied).toBe(true);
+    expect(doc.childCount).toBe(1);
+    expect(doc.child(0).textContent).toBe("before");
+  });
+
+  it("removes a blank {glossary} nested in another glossary's definition", () => {
+    const inner = directive("glossary", "", [
+      definitionList(definitionTerm(""), definitionBody([p("")])),
+    ]);
+    const testDoc = schema.nodes.doc.create(null, [
+      directive("glossary", "", [
+        definitionList(
+          definitionTerm("Term"),
+          definitionBody([p("Definition"), inner])
+        ),
+      ]),
+    ]);
+    let pos = -1;
+    testDoc.descendants((node, nodePos) => {
+      if (node.type.name === "definition_term" && node.content.size === 0) {
+        pos = nodePos + 1;
+      }
+    });
+    const { applied, doc } = run(testDoc, pos);
+
+    expect(applied).toBe(true);
+    expect(doc.textContent).toBe("TermDefinition");
+    let glossaries = 0;
+    doc.descendants((node) => {
+      if (node.type.name === "container_directive") {
+        glossaries++;
+      }
+    });
+    expect(glossaries).toBe(1);
+  });
+
+  it("removes only a blank entry when the list has others", () => {
+    const testDoc = schema.nodes.doc.create(null, [
+      directive("glossary", "", [
+        definitionList(
+          definitionTerm("Term"),
+          definitionBody([p("Definition")]),
+          definitionTerm(""),
+          definitionBody([p("")])
+        ),
+      ]),
+    ]);
+    // Inside the blank entry's own empty definition paragraph.
+    const pos = testDoc.content.size - 4;
+    const { applied, doc } = run(testDoc, pos);
+
+    expect(applied).toBe(true);
+    const list = doc.firstChild!.firstChild!;
+    expect(list.type.name).toBe("definition_list");
+    expect(list.childCount).toBe(2);
+    expect(list.textContent).toBe("TermDefinition");
+  });
+
+  it("declines in a glossary entry that has a term", () => {
+    const testDoc = schema.nodes.doc.create(null, [
+      directive("glossary", "", [
+        definitionList(definitionTerm("Term"), definitionBody([p("")])),
+      ]),
+    ]);
+    const { applied } = run(testDoc, testDoc.content.size - 4);
+    expect(applied).toBe(false);
   });
 });

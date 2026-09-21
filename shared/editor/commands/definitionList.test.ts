@@ -211,6 +211,17 @@ describe("insertGlossary", () => {
     expect(applied).toBe(false);
   });
 
+  it("declines inside another glossary's definition", () => {
+    const testDoc = doc(
+      definitionList(definitionTerm("Term"), definitionBody([p("Text"), p("")]))
+    );
+    const pos = findEmptyParagraphPos(testDoc);
+    const { applied, doc: result } = run(testDoc, pos, insertGlossary);
+
+    expect(applied).toBe(false);
+    expect(result.eq(testDoc)).toBe(true);
+  });
+
   it("round-trips through markdown once filled in", () => {
     const testDoc = doc([p("")]);
     let state = createEditorState(testDoc);

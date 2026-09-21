@@ -34,7 +34,7 @@ export const moveIntoDefinitionBody: Command = (state, dispatch) => {
  * `definition_list` never yields a valid term + body pair. An empty
  * paragraph under the cursor (what the slash menu leaves behind) is
  * replaced; a paragraph with content is kept, and the glossary goes right
- * after it.
+ * after it. Declines anywhere inside an existing definition list.
  *
  * @returns A prosemirror command.
  */
@@ -50,6 +50,15 @@ export const insertGlossary: Command = (state, dispatch) => {
 
   if ($from.depth < 1 || $from.parent.type !== paragraphType) {
     return false;
+  }
+
+  // A glossary inside another glossary's definition means nothing to
+  // Sphinx, and is only ever reached by accident — the cursor is sitting in
+  // a definition when the menu is opened.
+  for (let depth = $from.depth - 1; depth > 0; depth--) {
+    if ($from.node(depth).type === listType) {
+      return false;
+    }
   }
 
   const containerDepth = $from.depth - 1;
