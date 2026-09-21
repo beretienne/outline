@@ -42,7 +42,8 @@ quotes, code blocks, dividers, callouts, maths, images
 | Placeholder | Fill it in before the page ships |
 
 **Good to know**
-strikethrough in printed output, image resizing, links to other collections
+strikethrough in printed output, image resizing, links to other collections,
+captions (an Outline caption is not a Sphinx caption), Sphinx blocks and glossary terms
 
 If you remember one thing: **callouts are excellent, use them.**
 
@@ -111,6 +112,20 @@ review before a release.
 **If the point needs to reach print readers, say it in words** — "no longer
 applies", "withdrawn in version 2" — or delete the text and let the document
 history remember it.
+
+### Glossary term — the **Glossary term** toolbar button, or typing `` {term}`text` ``
+
+Select some words and click **Glossary term** (the library icon, next to inline
+code) to mark them as a reference to a glossary entry, the way Sphinx's
+`` {term}`text` `` role does. Click again to remove it. Typing
+`` {term}`field of view` `` with the closing backtick does the same.
+
+In Outline it shows as the words with a dotted underline, and that is all: it is
+a marker, not a link, and nothing happens on click. It travels exactly as
+written. Bold, italics, links and code cannot be applied inside one, because
+Sphinx reads what is between the backticks literally. Only the plain form is
+supported; Sphinx's `` {term}`Display text <target>` `` is kept as typed but not
+interpreted.
 
 ---
 
@@ -201,6 +216,31 @@ does not show — the cell simply reads as plain:
 
 The colour goes wherever the cell goes, so editing the cell's text keeps it.
 Deleting the comment is how you clear the shading from the source side.
+
+### Sphinx blocks — conditional content, grids, margin notes, glossaries
+
+Type `/` and pick one (or search by name: `/ifconfig`, `/grid`, `/margin`,
+`/glossary`). Each shows as a framed box with its directive name in the corner,
+and comes back as the MyST directive you would have written by hand.
+
+| Menu entry | Gives you | Notes |
+| --- | --- | --- |
+| Conditional content | `{ifconfig}` | Click the label and add the condition: `{ifconfig} Class == 'A'`. |
+| Grid | `{grid} 2` | Edit the label to change the number of columns. |
+| Grid item | `{grid-item}` | Use it *inside* a grid; it nests instead of replacing the grid. |
+| Margin note | `{margin}` | |
+| Glossary | `{glossary}` | Starts with one blank entry, described below. |
+
+The name and argument in the corner can be edited in place; a name that is not
+one of these five is refused rather than saved as something Outline could not
+write back. What the argument means to Sphinx is up to you.
+
+**A glossary** is a list of terms and definitions. Type the term, press Enter to
+move to its definition, and press Enter twice to start the next entry. To
+remove a blank entry, or a glossary that is still blank, press Backspace inside
+it. A glossary cannot be placed inside another glossary's definition.
+
+**Figures** are inserted the same way — see [Captions](#captions-a-caption-in-outline-is-not-a-caption-in-the-manual).
 
 ### Maths
 
@@ -345,9 +385,9 @@ first time a page goes through, and then the file settles down for good.
 You can write MyST straight into Outline and it comes back exactly as you typed
 it:
 
-- directives Outline has no button for: `{margin}`, `{eval-rst}`
+- directives Outline has no button for: `{eval-rst}`, `{raw}`, `{tabularcolumns}`
 - every admonition, with its title and its options
-- roles: `` {term}`resolution` ``
+- roles: `` {term}`resolution` `` (it has a toolbar button; other roles are kept as text)
 - cross-reference targets: `(my-label)=`
 - substitutions: `{{ CAM }}`
 - comments: `% this line is a comment`
