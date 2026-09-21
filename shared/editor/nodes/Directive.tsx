@@ -1,8 +1,16 @@
 import type Token from "markdown-it/lib/token.mjs";
 import { SettingsIcon } from "outline-icons";
-import type { NodeSpec, Node as ProsemirrorNode } from "prosemirror-model";
+import { wrapIn } from "prosemirror-commands";
+import type {
+  NodeSpec,
+  NodeType,
+  Node as ProsemirrorNode,
+} from "prosemirror-model";
 import type { FocusEvent, KeyboardEvent } from "react";
+import type { Command } from "prosemirror-state";
 import { TextSelection } from "prosemirror-state";
+import type { Primitive } from "utility-types";
+import { insertGlossary } from "../commands/definitionList";
 import { DEFAULT_FENCE_LENGTH, requiredFenceLength } from "../lib/fenceLength";
 import type { MarkdownSerializerState } from "../lib/markdown/serializer";
 import directivesRule, { parseDirectiveInfo } from "../rules/directives";
@@ -160,6 +168,17 @@ export default class Directive extends Node {
         ],
         ["div", { class: EditorStyleHelper.directiveContent }, 0],
       ],
+    };
+  }
+
+  commands({ type }: { type: NodeType }) {
+    return {
+      // Deliberately `wrapIn`, not `Notice`'s own `toggleWrap`: that lifts
+      // out of the node whenever the cursor is already inside one, which
+      // would make inserting a `{grid-item}` inside a `{grid}` — the whole
+      // point of nesting these — unwrap the grid instead.
+      container_directive: (attrs: Record<string, Primitive>): Command =>
+        attrs?.directive === "glossary" ? insertGlossary : wrapIn(type, attrs),
     };
   }
 

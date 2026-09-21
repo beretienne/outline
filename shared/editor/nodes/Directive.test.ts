@@ -1,5 +1,13 @@
 import type { Node as ProsemirrorNode } from "prosemirror-model";
-import { createEditorState, p, schema } from "@shared/test/editor";
+import { TextSelection } from "prosemirror-state";
+import {
+  createEditorState,
+  extensionManager,
+  p,
+  schema,
+  serializer,
+} from "@shared/test/editor";
+import Directive from "./Directive";
 
 /**
  * Deletes all of a node's own content and returns what ProseMirror leaves
@@ -52,5 +60,76 @@ describe("deleting all content leaves an empty paragraph, not a checkbox", () =>
     const result = deleteAllContentOf(body);
     expect(result.childCount).toBe(1);
     expect(result.firstChild!.type.name).toBe("paragraph");
+  });
+});
+
+/**
+ * Runs the slash menu's own `container_directive` command with the cursor
+ * placed at `pos`.
+ */
+function insert(
+  testDoc: ReturnType<typeof schema.nodes.doc.create>,
+  pos: number,
+  attrs: Record<string, string>
+) {
+  const directive = extensionManager.extensions.find(
+    (extension) => extension instanceof Directive
+  );
+  if (!(directive instanceof Directive)) {
+    throw new Error("Directive extension not registered");
+  }
+  const command = directive
+    .commands({ type: schema.nodes.container_directive })
+    .container_directive(attrs);
+
+  let state = createEditorState(testDoc);
+  state = state.apply(
+    state.tr.setSelection(TextSelection.create(state.doc, pos))
+  );
+  const applied = command(state, (tr) => {
+    state = state.apply(tr);
+  });
+  return { applied, doc: state.doc, selection: state.selection };
+}
+
+describe("Directive container_directive command", () => {
+  it("wraps an empty paragraph, keeping the cursor inside", () => {
+    const testDoc = schema.nodes.doc.create(null, [p("")]);
+    const { applied, doc, selection } = insert(testDoc, 1, {
+      directive: "grid",
+      argument: "2",
+    });
+
+    expect(applied).toBe(true);
+    expect(doc.firstChild?.type.name).toBe("container_directive");
+    expect(doc.firstChild?.attrs.argument).toBe("2");
+    expect(selection.$from.parent.type.name).toBe("paragraph");
+    expect(selection.$from.depth).toBe(2);
+  });
+
+  it("nests inside an existing directive instead of unwrapping it", () => {
+    const testDoc = schema.nodes.doc.create(null, [
+      schema.nodes.container_directive.create(
+        { directive: "grid", argument: "2" },
+        [p("cell")]
+      ),
+    ]);
+    const { applied, doc } = insert(testDoc, 3, { directive: "grid-item" });
+
+    expect(applied).toBe(true);
+    const grid = doc.firstChild;
+    expect(grid?.attrs.directive).toBe("grid");
+    expect(grid?.firstChild?.attrs.directive).toBe("grid-item");
+    expect(serializer.serialize(doc).trim()).toBe(
+      "::::{grid} 2\n:::{grid-item}\ncell\n\n:::\n\n::::"
+    );
+  });
+
+  it("routes glossary to a real definition list", () => {
+    const testDoc = schema.nodes.doc.create(null, [p("")]);
+    const { applied, doc } = insert(testDoc, 1, { directive: "glossary" });
+
+    expect(applied).toBe(true);
+    expect(doc.firstChild?.firstChild?.type.name).toBe("definition_list");
   });
 });

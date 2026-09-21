@@ -22,6 +22,7 @@ import {
   DoneIcon,
   EmbedIcon,
   CollapseIcon,
+  SettingsIcon,
 } from "outline-icons";
 import * as React from "react";
 import styled from "styled-components";
@@ -267,6 +268,44 @@ export default function blockMenuItems(
       icon: <StarredIcon />,
       keywords: "card callout hint suggestion",
       attrs: { style: "tip" },
+    },
+    {
+      name: "separator",
+    },
+    {
+      name: "container_directive",
+      title: t("Conditional content"),
+      icon: <SettingsIcon />,
+      keywords: "myst directive ifconfig condition sphinx",
+      attrs: { directive: "ifconfig" },
+    },
+    {
+      name: "container_directive",
+      title: t("Grid"),
+      icon: <SettingsIcon />,
+      keywords: "myst directive grid columns layout sphinx",
+      attrs: { directive: "grid", argument: "2" },
+    },
+    {
+      name: "container_directive",
+      title: t("Grid item"),
+      icon: <SettingsIcon />,
+      keywords: "myst directive grid-item column cell sphinx",
+      attrs: { directive: "grid-item" },
+    },
+    {
+      name: "container_directive",
+      title: t("Margin note"),
+      icon: <SettingsIcon />,
+      keywords: "myst directive margin aside sidebar sphinx",
+      attrs: { directive: "margin" },
+    },
+    {
+      name: "container_directive",
+      title: t("Glossary"),
+      icon: <SettingsIcon />,
+      keywords: "myst directive glossary definition list term sphinx",
+      attrs: { directive: "glossary" },
     },
     {
       name: "separator",

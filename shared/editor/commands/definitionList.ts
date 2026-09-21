@@ -26,6 +26,69 @@ export const moveIntoDefinitionBody: Command = (state, dispatch) => {
 };
 
 /**
+ * Inserts a new, empty `{glossary}` — a `container_directive` wrapping a
+ * `definition_list` with one blank term/definition pair — and places the
+ * cursor in the term, ready to type.
+ *
+ * A plain wrap cannot do this: wrapping arbitrary content in a
+ * `definition_list` never yields a valid term + body pair. An empty
+ * paragraph under the cursor (what the slash menu leaves behind) is
+ * replaced; a paragraph with content is kept, and the glossary goes right
+ * after it.
+ *
+ * @returns A prosemirror command.
+ */
+export const insertGlossary: Command = (state, dispatch) => {
+  const {
+    container_directive: directiveType,
+    definition_list: listType,
+    definition_term: termType,
+    definition_body: bodyType,
+    paragraph: paragraphType,
+  } = state.schema.nodes;
+  const { $from } = state.selection;
+
+  if ($from.depth < 1 || $from.parent.type !== paragraphType) {
+    return false;
+  }
+
+  const containerDepth = $from.depth - 1;
+  const container = $from.node(containerDepth);
+  const index = $from.index(containerDepth);
+  const replace = $from.parent.content.size === 0;
+
+  if (
+    !container.canReplaceWith(
+      replace ? index : index + 1,
+      index + 1,
+      directiveType
+    )
+  ) {
+    return false;
+  }
+
+  const glossary = directiveType.create(
+    { directive: "glossary" },
+    listType.create(null, [
+      termType.create(),
+      bodyType.create(null, paragraphType.create()),
+    ])
+  );
+
+  const tr = state.tr;
+  const insertPos = replace ? $from.before() : $from.after();
+  if (replace) {
+    tr.replaceWith(insertPos, $from.after(), glossary);
+  } else {
+    tr.insert(insertPos, glossary);
+  }
+  // +1 enters the directive, +1 the list, +1 the term.
+  tr.setSelection(TextSelection.create(tr.doc, insertPos + 3));
+  dispatch?.(tr.scrollIntoView());
+  return true;
+};
+
+/**
  * Splits the current `definition_list` entry into two on a *second* Enter.
  *
  * A single Enter must stay able to add an ordinary paragraph to the current

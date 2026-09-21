@@ -8,8 +8,15 @@ import {
   definitionTerm,
   doc,
   p,
+  parser,
+  schema,
+  serializer,
 } from "@shared/test/editor";
-import { moveIntoDefinitionBody, splitDefinitionEntry } from "./definitionList";
+import {
+  insertGlossary,
+  moveIntoDefinitionBody,
+  splitDefinitionEntry,
+} from "./definitionList";
 
 /**
  * Runs a command with the selection placed at `pos` and returns the
@@ -159,5 +166,70 @@ describe("moveIntoDefinitionBody", () => {
     const pos = testDoc.content.size - 3; // inside "Definition"
     const { applied } = run(testDoc, pos, moveIntoDefinitionBody);
     expect(applied).toBe(false);
+  });
+});
+
+describe("insertGlossary", () => {
+  it("replaces an empty paragraph with a one-entry glossary", () => {
+    const testDoc = doc([p("before"), p("")]);
+    const pos = findEmptyParagraphPos(testDoc);
+    const {
+      applied,
+      doc: result,
+      selection,
+    } = run(testDoc, pos, insertGlossary);
+
+    expect(applied).toBe(true);
+    expect(result.childCount).toBe(2);
+    const glossary = result.child(1);
+    expect(glossary.type.name).toBe("container_directive");
+    expect(glossary.attrs.directive).toBe("glossary");
+    expect(glossary.firstChild?.type.name).toBe("definition_list");
+    expect(glossary.firstChild?.childCount).toBe(2);
+    expect(selection.$from.parent.type.name).toBe("definition_term");
+    expect(() => result.check()).not.toThrow();
+  });
+
+  it("keeps a paragraph that has content and inserts after it", () => {
+    const testDoc = doc([p("keep me"), p("after")]);
+    const { applied, doc: result, selection } = run(testDoc, 3, insertGlossary);
+
+    expect(applied).toBe(true);
+    expect(result.childCount).toBe(3);
+    expect(result.child(0).textContent).toBe("keep me");
+    expect(result.child(1).type.name).toBe("container_directive");
+    expect(result.child(2).textContent).toBe("after");
+    expect(selection.$from.parent.type.name).toBe("definition_term");
+  });
+
+  it("declines where a directive is not allowed", () => {
+    const testDoc = doc(
+      definitionList(definitionTerm("Term"), definitionBody([p("Text")]))
+    );
+    // Inside the term itself, not a paragraph.
+    const { applied } = run(testDoc, 3, insertGlossary);
+    expect(applied).toBe(false);
+  });
+
+  it("round-trips through markdown once filled in", () => {
+    const testDoc = doc([p("")]);
+    let state = createEditorState(testDoc);
+    state = state.apply(
+      state.tr.setSelection(TextSelection.create(state.doc, 1))
+    );
+    insertGlossary(state, (tr) => {
+      state = state.apply(tr);
+    });
+    state = state.apply(state.tr.insertText("Term"));
+    const bodyPos = state.selection.$from.after() + 2;
+    state = state.apply(state.tr.insertText("Definition", bodyPos));
+
+    const markdown = serializer.serialize(state.doc);
+    expect(markdown.trim()).toBe(":::{glossary}\nTerm\n   Definition\n\n:::");
+    const reparsed = parser.parse(markdown);
+    expect(reparsed?.firstChild?.type).toBe(schema.nodes.container_directive);
+    expect(reparsed?.firstChild?.firstChild?.type).toBe(
+      schema.nodes.definition_list
+    );
   });
 });
