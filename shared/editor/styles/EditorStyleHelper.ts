@@ -133,6 +133,9 @@ export class EditorStyleHelper {
   /** A single entry's definition body. */
   static readonly definitionBody = "definition-body";
 
+  /** A `{term}` role — an inline reference to a glossary entry. */
+  static readonly termReference = "term-reference";
+
   // Suggestions
 
   /** Trigger character and search term while a suggestion menu is open */

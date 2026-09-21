@@ -1482,6 +1482,15 @@ ${
   margin: 8px 0;
 }
 
+/* A {term} role: marked as a glossary reference, not a link — there is
+   nothing to click through to. */
+.${EditorStyleHelper.termReference} {
+  text-decoration: underline dotted;
+  text-decoration-thickness: 1.5px;
+  text-underline-offset: 3px;
+  cursor: help;
+}
+
 .${EditorStyleHelper.definitionTerm} {
   font-weight: 600;
   margin-top: 8px;

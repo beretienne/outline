@@ -16,6 +16,7 @@ import Italic from "../marks/Italic";
 import Link from "../marks/Link";
 import TemplatePlaceholder from "../marks/Placeholder";
 import Strikethrough from "../marks/Strikethrough";
+import TermReference from "../marks/TermReference";
 import Underline from "../marks/Underline";
 import Attachment from "./Attachment";
 import Blockquote from "./Blockquote";
@@ -115,6 +116,10 @@ export const basicExtensions: Nodes = [
  * editors that need advanced formatting.
  */
 export const richExtensions: Nodes = [
+  // Ahead of `Code`, deliberately: input rules are tried in registration
+  // order, and Code's own backtick rule matches the very keystroke that
+  // closes a typed `` {term}`text` ``.
+  TermReference,
   ...inlineExtensions.filter((n) => n !== SimpleImage),
   Image,
   Figure,

@@ -85,7 +85,7 @@ describe("preserved exactly", () => {
    * Inline MyST constructs are opaque to Outline and travel as literal text.
    */
   test.each([
-    ["role", "See {term}`resolution` for details."],
+    ["role Outline has no mark for", "Press {kbd}`Ctrl` to continue."],
     ["cross-reference target", "(my-label)="],
     ["substitution", "The {{ CAM }} unit."],
     ["comment", "% a MyST comment"],
@@ -1173,5 +1173,64 @@ describe("known limits", () => {
     // cost of the block rendering as plain text inside Outline.
     const source = '<img src="media/photo.png" width="50%">';
     expect(roundTrip(source)).toBe(source);
+  });
+});
+
+/**
+ * `` {term}`text` `` is a real mark (`term_reference`), not inline code that
+ * happens to sit next to the literal text `{term}` — which is what
+ * markdown-it's own backticks rule made of it before, and which round-tripped
+ * to the same string for the wrong reason.
+ */
+describe("{term} role becomes a term_reference mark", () => {
+  function marksOf(source: string) {
+    const found: { text: string; marks: string[] }[] = [];
+    parser.parse(source)?.descendants((node) => {
+      if (node.isText) {
+        found.push({
+          text: node.text ?? "",
+          marks: node.marks.map((mark) => mark.type.name),
+        });
+      }
+    });
+    return found;
+  }
+
+  test("parses to the mark and drops the delimiters from the text", () => {
+    expect(marksOf("See {term}`resolution` for details.")).toEqual([
+      { text: "See ", marks: [] },
+      { text: "resolution", marks: ["term_reference"] },
+      { text: " for details.", marks: [] },
+    ]);
+  });
+
+  test.each([
+    ["mid-sentence", "See {term}`resolution` for details."],
+    ["several in one line", "{term}`CAM` and {term}`field of view`."],
+    ["characters markdown would escape", "A {term}`snake_case*name` here."],
+    ["split-target form, kept verbatim", "A {term}`Display <target>` here."],
+    ["inside a table cell", "| a   |\n|-----|\n| {term}`x` |"],
+  ])("round-trips: %s", (_name, source) => {
+    const once = roundTrip(source);
+    expect(once.trim()).toBe(source);
+    expect(roundTrip(once)).toBe(once);
+  });
+
+  test("inside a {glossary} definition", () => {
+    const source = ":::{glossary}\nTerm\n   See {term}`other term`.\n\n:::";
+    expect(roundTrip(source).trim()).toBe(source);
+    expect(marksOf(source)).toContainEqual({
+      text: "other term",
+      marks: ["term_reference"],
+    });
+  });
+
+  test.each([
+    ["unclosed", "An {term}`unclosed role."],
+    ["empty", "An {term}`` role."],
+  ])("leaves a malformed role alone: %s", (_name, source) => {
+    expect(
+      marksOf(source).some((t) => t.marks.includes("term_reference"))
+    ).toBe(false);
   });
 });
