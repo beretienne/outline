@@ -238,7 +238,13 @@ image's **alt text** — `![your caption](media/photo.png)` — and that is all
 it is to Sphinx: a description for screen readers, shown only if the image
 cannot load. **It does not appear under the picture in the built manual.**
 
-**When the manual needs a visible caption, use a `{figure-md}`:**
+**When the manual needs a visible caption, use a `{figure-md}`.** In Outline
+the quickest way is the `/figure` entry in the block menu (type `/` and pick
+**Figure**): choose an image and it is inserted as a `{figure-md}` instead of a
+plain image, then click it and write the caption in the field underneath. It is
+the same picture, resizing and alignment as any other image; the difference is
+only what the manual gets. The text form, for pasting or for editing the source
+directly:
 
 ````markdown
 ```{figure-md} optional-label
@@ -249,9 +255,8 @@ The caption, as it should appear under the picture.
 ````
 
 Paste that in (or import a page that has one) and Outline shows it as an
-ordinary image with its caption, fully editable — resize it, align it,
-rewrite the caption — and saves it back as the same `{figure-md}`, label
-included. An image that did *not* arrive as a `{figure-md}` stays a plain
+ordinary image with its caption, fully editable — resize it, align it, rewrite
+the caption — and saves it back as the same `{figure-md}`, label included. An image that did *not* arrive as a `{figure-md}` stays a plain
 image, caption or not; Outline never turns one into the other on its own.
 
 #### The installation-wide switch: `MYST_FIGURE_FOR_CAPTIONED_IMAGES`
@@ -363,7 +368,27 @@ simplified:
 
 The picture and the words come through; what is set aside is Sphinx's knowledge
 that one was a numbered figure and the other an unnumbered heading. If a page
-depends on numbered figure references, keep it out of the Outline sync.
+depends on numbered figure references from a `{figure}`, use a `{figure-md}`
+instead (below), or keep the page out of the Outline sync.
+
+**`{figure-md}` is not simplified** — it reaches Outline as a real figure and
+comes back as you wrote it, label included, as long as it has this shape:
+
+- one image line, with at most a pixel `width` and/or a `left`/`right`/`center`
+  `align` in `{...}` directly after it (on the same line);
+- then at most one caption paragraph of plain text (`*emphasis*` is fine, it
+  is kept in your source; a link, a bare URL, HTML, maths or a `{role}` is not).
+
+A `{figure-md}` outside that shape — a legend paragraph, option lines, the
+`{width=…}` on the line *below* the image (MyST does not read it as an
+attribute there either), two images — is flattened to an image and a caption
+paragraph like a `{figure}`, and loses its label.
+
+**When you edit a figure in Outline** (change the caption, the width, the
+image), the next pull brings Outline's version back — a backtick fence, the
+caption as plain text, `align=center` dropped since Outline cannot tell it from
+no alignment. A figure you did *not* touch comes back exactly as it is in the
+source, so a pull never quietly strips the emphasis from a caption.
 
 **One arrangement to avoid, shared with callouts:** a code fence pasted inside
 a directive as raw markdown text, both fenced with ` ``` ` at the same length.
