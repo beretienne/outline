@@ -355,6 +355,39 @@ function unclaimedColonFence(md: MarkdownIt): void {
         break;
       }
 
+      if (!haveEndMarker && nextLine >= endLine) {
+        // The nesting-aware scan above found no closer for this fence, so it
+        // would swallow everything up to the end of the document. Fall back
+        // to what MyST itself does — a fence closes at the first bare line
+        // at least as long as its opener, whatever it nested — so a fence
+        // whose own closer is missing (one that shares its colon count with
+        // a nested fence, say, whose closer then serves both) ends where
+        // Sphinx ends it instead of taking every block after it along.
+        for (let line = startLine + 1; line < endLine; line++) {
+          let closePos = state.bMarks[line] + state.tShift[line];
+          const closeMax = state.eMarks[line];
+          if (closePos < closeMax && state.sCount[line] < state.blkIndent) {
+            break;
+          }
+          if (
+            state.src.charCodeAt(closePos) !== COLON_MARKER_CODE ||
+            state.sCount[line] - state.blkIndent >= 4
+          ) {
+            continue;
+          }
+          const closeStart = closePos;
+          closePos = state.skipChars(closePos, COLON_MARKER_CODE);
+          if (
+            closePos - closeStart >= markerLength &&
+            state.skipSpaces(closePos) >= closeMax
+          ) {
+            nextLine = line;
+            haveEndMarker = true;
+            break;
+          }
+        }
+      }
+
       const indent = state.sCount[startLine];
       state.line = nextLine + (haveEndMarker ? 1 : 0);
 

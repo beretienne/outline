@@ -1296,3 +1296,106 @@ describe("captioned images as {figure-md}", () => {
     expect(serializer.serialize(doc!).trim()).toBe(captioned);
   });
 });
+
+/**
+ * A colon fence ends where MyST ends it. The parser tracks nesting so that a
+ * `{glossary}` holding a `{grid}` holding a `{grid-item}` closes on its own
+ * closer, but real content also leaves a fence without one of its own — a
+ * `{glossary}` whose indented `{grid}` shares its colon count, the grid's
+ * closer then doing for both, which MyST reads as the glossary's end. With
+ * nesting tracked alone that fence found no closer and swallowed every block
+ * after it into a single code block.
+ */
+describe("a colon fence without a closer of its own ends where MyST ends it", () => {
+  function topLevel(source: string) {
+    const doc = parser.parse(source);
+    const found: string[] = [];
+    doc?.forEach((node) => {
+      found.push(
+        node.type.name === "container_directive"
+          ? `directive:${node.attrs.directive}`
+          : node.type.name
+      );
+    });
+    return found;
+  }
+
+  const shared =
+    ":::::{glossary}\n" +
+    "\n" +
+    "Term one\n" +
+    "   Definition.\n" +
+    "\n" +
+    "   :::::{grid} 2\n" +
+    "\n" +
+    "   ::::{grid-item}\n" +
+    "   Cell\n" +
+    "   ::::\n" +
+    "   :::::\n" +
+    "\n";
+
+  test("the blocks after it stay separate", () => {
+    const source =
+      shared +
+      ":::::{glossary}\n" +
+      "\n" +
+      "Term two\n" +
+      "   Other.\n" +
+      ":::::\n" +
+      "\n" +
+      "After.\n";
+
+    expect(topLevel(source)).toEqual([
+      "directive:glossary",
+      "directive:glossary",
+      "paragraph",
+    ]);
+  });
+
+  test("it is still a definition list with its grid inside", () => {
+    const doc = parser.parse(
+      shared + ":::::{glossary}\n\nTerm two\n   Other.\n:::::\n"
+    );
+    const kinds: Record<string, number> = {};
+    doc?.firstChild?.descendants((node) => {
+      kinds[node.type.name] = (kinds[node.type.name] ?? 0) + 1;
+    });
+
+    expect(kinds.definition_list).toBe(1);
+    expect(kinds.definition_term).toBe(1);
+    // The grid and its one item.
+    expect(kinds.container_directive).toBe(2);
+  });
+
+  test("well-formed nesting still closes on its own closer", () => {
+    // Same colon count throughout, but the glossary has a closer of its own.
+    const source = shared + ":::::\n\nAfter.\n";
+
+    expect(topLevel(source)).toEqual(["directive:glossary", "paragraph"]);
+  });
+
+  test("a fence with no closer anywhere still runs to the end", () => {
+    // Nothing to fall back to: it takes the rest of the document, as an
+    // unclosed fence does in MyST too. (Not a definition list, because of
+    // the unindented paragraph, so it stays an inert block.)
+    const source = ":::::{glossary}\n\nTerm\n   Definition.\n\nStill inside.\n";
+
+    expect(topLevel(source)).toHaveLength(1);
+  });
+
+  test("the result writes back as properly nested MyST", () => {
+    const once = roundTrip(
+      shared + ":::::{glossary}\n\nTerm two\n   Other.\n:::::\n\nAfter.\n"
+    );
+
+    // Outline writes the outer fence one colon longer than the grid it
+    // holds, so the document no longer relies on a closer doing double duty.
+    expect(once).toMatch(/^::::::\{glossary\}$/m);
+    expect(topLevel(once)).toEqual([
+      "directive:glossary",
+      "directive:glossary",
+      "paragraph",
+    ]);
+    expect(roundTrip(once)).toBe(once);
+  });
+});
