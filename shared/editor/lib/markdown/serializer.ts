@@ -439,7 +439,15 @@ export class MarkdownSerializerState {
       return;
     }
 
-    if (this.closed && this.closed.type === node.type) {
+    // Two adjacent lists of the same kind get an extra blank line, so they
+    // are not read back as one. Bullet lists with different markers cannot
+    // merge (CommonMark starts a new list when the marker changes), so they
+    // are separated like any other two blocks.
+    if (
+      this.closed &&
+      this.closed.type === node.type &&
+      this.closed.attrs.bullet === node.attrs.bullet
+    ) {
       this.flushClose(3);
     } else if (this.inTightList) {
       this.flushClose(1);

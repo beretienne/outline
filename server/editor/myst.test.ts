@@ -43,6 +43,9 @@ describe("preserved exactly", () => {
     ["image with attrs_inline", '![alt](media/photo.png){width="50%"}'],
     ["bullet list (asterisk)", "* one\n* two"],
     ["ordered list", "1. one\n2. two"],
+    ["bullet list (dash)", "- one\n- two"],
+    ["bullet list (plus)", "+ one\n+ two"],
+    ["a dash list next to a plus list", "- one\n- two\n\n+ three\n+ four"],
     ["tasklist", "- [ ] todo\n- [x] done"],
     ["blockquote", "> quoted"],
     ["fenced code", "```python\nprint(1)\n```"],
@@ -103,7 +106,16 @@ describe("preserved exactly", () => {
  */
 describe("normalized to a canonical form", () => {
   test.each([
-    ["dash bullets become asterisks", "- one\n- two", "* one\n* two"],
+    [
+      "spaces after a bullet marker become one",
+      "-  one\n-  two",
+      "- one\n- two",
+    ],
+    [
+      "nested bullet lists are indented to that one space",
+      "-  one\n   -  nested\n-  two",
+      "- one\n  - nested\n- two",
+    ],
     [
       "table cells are padded to column width",
       "| a | b |\n|---|---|\n| 1 | 2 |",

@@ -593,8 +593,10 @@ describe("documentUpdater", () => {
 
       document = await withAPIContext(user, (ctx) =>
         documentUpdater(ctx, {
-          text: "* Updated item",
-          findText: "* Second item",
+          // The list keeps the marker it was written with (`-`), so the
+          // text to find is written with it too.
+          text: "- Updated item",
+          findText: "- Second item",
           document,
           editMode: TextEditMode.Patch,
         })
