@@ -242,6 +242,38 @@ it. A glossary cannot be placed inside another glossary's definition.
 
 **Figures** are inserted the same way — see [Captions](#captions-a-caption-in-outline-is-not-a-caption-in-the-manual).
 
+### Comments — lines starting with %
+
+A line starting with `%` is a MyST comment: Sphinx drops it from the built
+manual entirely. Outline shows each commented line greyed out, behind a thin
+rule, instead of hiding it — so it stays visible and editable, but it is
+never published. Every commented line stands on its own, exactly as in the
+source file.
+
+**To comment something out**, put the cursor in it (or select several
+lines) and press **Ctrl+/** (**Cmd+/** on a Mac), or type `/` and pick
+**Comment (not published)**. Each line becomes one commented line — list
+markers, indentation, bold and links included, kept as their Markdown. A
+list item taken out this way leaves the rest of its list in place. To start
+a new comment line from scratch, type `% ` at the start of an empty
+paragraph; Enter starts the next comment line, Enter on an empty one leaves
+the comment.
+
+**To put a line back**, press Backspace at its very start, or **Ctrl+/**
+again (which also works on a selection of several comment lines). The line
+comes back exactly as it was before its `%` was added — the same as deleting
+the `%` in the source file: a list item returns to its list at its own
+indentation, a glossary entry returns into its glossary, formatting comes
+back. The lines around it stay commented until you put them back too.
+
+An untouched comment writes back exactly as it was read, blank lines and
+all. That includes spaces at the end of a line: a line ending in a hard line
+break (two trailing spaces) keeps them while commented out, and gets its
+break back when it is put back.
+
+`50% of a page` is not a comment — only a `%` at the very start of a line
+counts, matching MyST's own rule.
+
 ### Maths
 
 Both `$x^2$` inside a sentence and standalone blocks work.
@@ -370,7 +402,8 @@ as `:smile:` rather than as a picture.
 You may notice a synced page looks slightly different in the source even though
 nobody edited it:
 
-- `-` bullets become `*` bullets
+- the spaces after a bullet (`-  item`) become one (`- item`), and nested
+  items are indented to match; the bullet itself (`-`, `*` or `+`) is kept
 - table columns get padded so they line up
 - callouts gain a blank line before their closing marker
 - `:::` markers become ` ``` ` markers
@@ -390,9 +423,15 @@ it:
 - roles: `` {term}`resolution` `` (it has a toolbar button; other roles are kept as text)
 - cross-reference targets: `(my-label)=`
 - substitutions: `{{ CAM }}`
-- comments: `% this line is a comment`
 - images with attributes: `![alt](photo.png){width="50%"}`
 - raw HTML
+
+**Comments are shown, not hidden.** Each `% this line is a comment` becomes
+a greyed-out line of its own (see [Comments](#comments--lines-starting-with-)
+above) rather than either disappearing or staying literal `%`-prefixed
+text — Outline never silently drops content, and a MyST comment is no
+exception. Both `% text` and `%text` are understood, and an untouched comment
+writes back exactly as it was read.
 
 While you are editing, the ones Outline has no button for appear as plain grey
 code blocks rather than rendered content. That is Outline holding them safe for
