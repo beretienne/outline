@@ -110,7 +110,7 @@ export default class Directive extends Node {
       // every one of these types remains equally allowed as actual
       // content regardless of position.
       content:
-        "(paragraph | list | blockquote | hr | heading | code_block | code_fence | attachment | figure | table | container_notice | container_directive | definition_list)+",
+        "(paragraph | list | blockquote | hr | heading | code_block | code_fence | attachment | figure | table | container_notice | container_directive | definition_list | myst_comment)+",
       group: "block",
       defining: true,
       // Stops Backspace/Delete from crossing this node's own boundary to

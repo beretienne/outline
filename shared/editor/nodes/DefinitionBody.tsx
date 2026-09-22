@@ -32,7 +32,7 @@ export default class DefinitionBody extends Node {
       // falls back to by default (instead of an empty checkbox item) when
       // an edit leaves this node needing a synthesized child from scratch.
       content:
-        "(paragraph | list | blockquote | hr | heading | code_block | code_fence | attachment | figure | table | container_notice | container_directive)+",
+        "(paragraph | list | blockquote | hr | heading | code_block | code_fence | attachment | figure | table | container_notice | container_directive | myst_comment)+",
       group: "block",
       defining: true,
       parseDOM: [{ tag: `dd.${EditorStyleHelper.definitionBody}` }],

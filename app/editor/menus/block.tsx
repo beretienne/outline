@@ -23,6 +23,7 @@ import {
   EmbedIcon,
   CollapseIcon,
   SettingsIcon,
+  CommentIcon,
 } from "outline-icons";
 import * as React from "react";
 import styled from "styled-components";
@@ -312,6 +313,12 @@ export default function blockMenuItems(
       icon: <SettingsIcon />,
       keywords: "myst directive glossary definition list term sphinx",
       attrs: { directive: "glossary" },
+    },
+    {
+      name: "myst_comment",
+      title: t("Comment (not published)"),
+      icon: <CommentIcon />,
+      keywords: "myst sphinx comment hidden percent unpublished",
     },
     {
       name: "separator",

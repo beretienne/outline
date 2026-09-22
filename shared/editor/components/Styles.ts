@@ -1491,6 +1491,35 @@ ${
   cursor: help;
 }
 
+/* A MyST % comment line: never published, so never drawn as ordinary
+   prose — greyed out, behind a thin rule, and nothing more. One node per
+   source line: consecutive lines ([data-tight]) sit flush against each
+   other so a commented-out block reads as one block, its rule unbroken. */
+.${EditorStyleHelper.mystComment} {
+  position: relative;
+  margin: 0.5em 0 0;
+  padding: 0 10px 0 1em;
+  color: ${props.theme.placeholder};
+  white-space: pre-wrap;
+  word-break: break-word;
+  cursor: text;
+
+  &[data-tight="true"] {
+    margin-top: 0;
+  }
+
+  &::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    background: ${props.theme.placeholder};
+    opacity: 0.5;
+  }
+}
+
 .${EditorStyleHelper.definitionTerm} {
   font-weight: 600;
   margin-top: 8px;

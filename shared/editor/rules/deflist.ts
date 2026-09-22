@@ -1,6 +1,7 @@
 import type MarkdownIt from "markdown-it";
 import type StateCore from "markdown-it/lib/rules_core/state_core.mjs";
 import type Token from "markdown-it/lib/token.mjs";
+import { commentRunTokens } from "./comments";
 import {
   DIRECTIVE_UNCONTAINABLE_BLOCKS,
   parseDirectiveInfo,
@@ -17,13 +18,23 @@ const SETEXT_UNDERLINE = /^(-+|=+)\s*$/;
 const OTHER_BLOCK_STARTER =
   /^(#{1,6}\s|`{3,}|:{3,}|~{3,}|\||[-*+]\s|\d+[.)]\s)/;
 
-type DeflistEntry = {
-  /** The term line, verbatim (inline-parsed later). */
-  term: string;
-  /** The definition's own lines, already dedented to that entry's own
-   * indent width. */
-  bodyLines: string[];
-};
+type DeflistEntry =
+  | {
+      kind: "term";
+      /** The term line, verbatim (inline-parsed later). */
+      term: string;
+      /** The definition's own lines, already dedented to that entry's own
+       * indent width. */
+      bodyLines: string[];
+    }
+  | {
+      kind: "comment";
+      /** A run of `%` comment lines sitting between two entries, each with
+       * its own leading `%` already stripped (matching the `myst_comment`
+       * rule's own token content shape) — see `parseEntries`'s own comment
+       * for why these get their own entry kind rather than being declined. */
+      lines: string[];
+    };
 
 /**
  * Split a `{glossary}` fence's raw body into term/definition entries, or
@@ -43,9 +54,18 @@ type DeflistEntry = {
  * `unclaimedColonFence` (`notices.ts`) already uses for a fence's own body,
  * and markdown-it's native `list` rule uses for a list item's own content.
  *
+ * A column-0 `%` comment run between two entries — real content in the
+ * QCAM5 install manual's own glossary, whole entries commented out — is its
+ * own entry kind rather than being declined outright (what a `%` line used
+ * to do here: it passed `OTHER_BLOCK_STARTER`, was taken as a term, then
+ * failed the "next line must be indented" check) or being folded into a
+ * definition's own body (Sphinx itself splits the `<dl>` at a comment
+ * between entries; see `tryBuildDefinitionList`, which does the same).
+ *
  * @param body - the fence's raw, unindented body text.
  * @returns the parsed entries, or undefined if the body is not cleanly a
- * sequence of them.
+ * sequence of them (or holds no real term entry at all — a comment-only
+ * body is not a definition list).
  */
 function parseEntries(body: string): DeflistEntry[] | undefined {
   const lines = body.split("\n");
@@ -57,6 +77,31 @@ function parseEntries(body: string): DeflistEntry[] | undefined {
   }
 
   while (i < lines.length) {
+    // A term's own body-scanning loop below always leaves `i` on a genuinely
+    // non-blank line (it consumes trailing blanks itself, as part of
+    // scanning how far the body extends) — but the comment branch just
+    // below does not have an equivalent scan, since a comment run stops at
+    // the first non-`%` line, blank or not. Skipping blank lines here once
+    // per iteration keeps both branches landing on the same footing before
+    // deciding what the next entry is.
+    while (i < lines.length && lines[i].trim() === "") {
+      i++;
+    }
+    if (i >= lines.length) {
+      break;
+    }
+
+    if (lines[i].startsWith("%")) {
+      const commentLines = [lines[i].slice(1)];
+      i++;
+      while (i < lines.length && lines[i].startsWith("%")) {
+        commentLines.push(lines[i].slice(1));
+        i++;
+      }
+      entries.push({ kind: "comment", lines: commentLines });
+      continue;
+    }
+
     const term = lines[i];
 
     // A term line indented relative to the body's own base (0, since this
@@ -105,10 +150,10 @@ function parseEntries(body: string): DeflistEntry[] | undefined {
       bodyLines.pop();
     }
 
-    entries.push({ term, bodyLines });
+    entries.push({ kind: "term", term, bodyLines });
   }
 
-  return entries.length > 0 ? entries : undefined;
+  return entries.some((entry) => entry.kind === "term") ? entries : undefined;
 }
 
 /**
@@ -191,6 +236,17 @@ function buildDefinitionBodyTokens(
  * the byte-exact opaque `CodeFence` every other unclaimed directive falls
  * back to too.
  *
+ * A `%` comment run between two entries splits the `definition_list` in
+ * two around a `myst_comment` node, sitting as its sibling — what Sphinx
+ * itself does to the `<dl>` — rather than teaching `definition_list` to
+ * hold a comment as one of its own children (which would touch its own
+ * strict `(definition_term definition_body)+` content expression and the
+ * term/body pair arithmetic `DefinitionList.toMarkdown` and
+ * `deleteEmptyDirective.ts` both rely on). The split lists still write back
+ * inside the one `{glossary}` fence either way — `Directive.toMarkdown`
+ * renders this node's whole content in one pass regardless of how many
+ * top-level children it has.
+ *
  * @param state - the core ruler state, used to construct new tokens.
  * @param body - the fence's raw body text.
  * @returns the `container_directive`-ready inner tokens, or undefined.
@@ -205,14 +261,34 @@ function tryBuildDefinitionList(
   }
 
   const tokens: Token[] = [];
-  const listOpen = new state.Token("definition_list_open", "dl", 1);
-  listOpen.block = true;
-  tokens.push(listOpen);
+  let listOpen = false;
 
   for (const entry of entries) {
+    if (entry.kind === "comment") {
+      if (listOpen) {
+        tokens.push(new state.Token("definition_list_close", "dl", -1));
+        listOpen = false;
+      }
+
+      tokens.push(
+        ...commentRunTokens(
+          (type, tag, nesting) => new state.Token(type, tag, nesting),
+          entry.lines
+        )
+      );
+      continue;
+    }
+
     const bodyTokens = buildDefinitionBodyTokens(state, entry.bodyLines);
     if (!bodyTokens) {
       return undefined;
+    }
+
+    if (!listOpen) {
+      const listOpenToken = new state.Token("definition_list_open", "dl", 1);
+      listOpenToken.block = true;
+      tokens.push(listOpenToken);
+      listOpen = true;
     }
 
     const termOpen = new state.Token("definition_term_open", "dt", 1);
@@ -244,7 +320,9 @@ function tryBuildDefinitionList(
     );
   }
 
-  tokens.push(new state.Token("definition_list_close", "dl", -1));
+  if (listOpen) {
+    tokens.push(new state.Token("definition_list_close", "dl", -1));
+  }
   return tokens;
 }
 

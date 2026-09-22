@@ -80,9 +80,17 @@ export default class PasteHandler extends Extension {
             const html = event.clipboardData.getData("text/html");
             const vscode = event.clipboardData.getData("vscode-editor-data");
 
-            // If the users selection is currently in a code block then paste
-            // as plain text, ignore all formatting and HTML content.
-            if (isInCode(state, { inclusive: true })) {
+            // If the users selection is currently in a code block — or any
+            // other `code: true` node, e.g. a MyST `%` comment, which
+            // `isInCode()` does not recognize by name — then paste as plain
+            // text, ignore all formatting and HTML content. Without this, a
+            // multi-paragraph paste into a single-node comment would split
+            // across paragraph/comment/paragraph instead of staying one
+            // comment.
+            if (
+              isInCode(state, { inclusive: true }) ||
+              state.selection.$from.parent.type.spec.code
+            ) {
               event.preventDefault();
               view.dispatch(state.tr.insertText(text));
               return true;

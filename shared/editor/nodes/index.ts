@@ -41,6 +41,7 @@ import ListItem from "./ListItem";
 import Math from "./Math";
 import MathBlock from "./MathBlock";
 import Mention from "./Mention";
+import MystComment from "./MystComment";
 import Notice from "./Notice";
 import OrderedList from "./OrderedList";
 import Paragraph from "./Paragraph";
@@ -125,6 +126,11 @@ export const richExtensions: Nodes = [
   Figure,
   CodeBlock,
   CodeFence,
+  // Registered well before ...listExtensions further down, for the same
+  // key-handler-ordering reason given there ("container type nodes should
+  // be last"): its own Enter key must win over ListItem's splitListItem
+  // when a comment sits inside a list item.
+  MystComment,
   Blockquote,
   Embed,
   Attachment,

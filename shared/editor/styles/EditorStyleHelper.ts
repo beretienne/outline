@@ -136,6 +136,11 @@ export class EditorStyleHelper {
   /** A `{term}` role — an inline reference to a glossary entry. */
   static readonly termReference = "term-reference";
 
+  // MyST
+
+  /** A MyST `%` line comment — invisible in Sphinx, shown dimmed here. */
+  static readonly mystComment = "myst-comment";
+
   // Suggestions
 
   /** Trigger character and search term while a suggestion menu is open */

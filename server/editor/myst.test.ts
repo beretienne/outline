@@ -1,5 +1,6 @@
 import fs from "fs";
 import path from "path";
+import type { Node as ProsemirrorNode } from "prosemirror-model";
 import { parser, schema, serializer } from ".";
 
 /**
@@ -42,6 +43,9 @@ describe("preserved exactly", () => {
     ["image", "![alt](media/photo.png)"],
     ["image with attrs_inline", '![alt](media/photo.png){width="50%"}'],
     ["bullet list (asterisk)", "* one\n* two"],
+    ["bullet list (dash)", "- one\n- two"],
+    ["bullet list (plus)", "+ one\n+ two"],
+    ["a dash list next to a plus list", "- one\n- two\n\n+ three\n+ four"],
     ["ordered list", "1. one\n2. two"],
     ["bullet list (dash)", "- one\n- two"],
     ["bullet list (plus)", "+ one\n+ two"],
@@ -91,7 +95,6 @@ describe("preserved exactly", () => {
     ["role Outline has no mark for", "Press {kbd}`Ctrl` to continue."],
     ["cross-reference target", "(my-label)="],
     ["substitution", "The {{ CAM }} unit."],
-    ["comment", "% a MyST comment"],
   ])("inline construct: %s", (_name, source) => {
     expect(roundTrip(source)).toBe(source);
   });
@@ -771,13 +774,14 @@ describe("glossary becomes a real definition list", () => {
 
   test("the real Terms_Definitions_Concepts.md file round-trips stably", () => {
     // The actual file this step exists for: most entries become real
-    // definition lists, and the one block where bare `%` RST comments sit
-    // between entries — not part of any definition, and not indented,
-    // which the comment lines' own continuation lines also are not —
-    // correctly declines rather than misreading a comment as a term. That
-    // block stays the byte-exact opaque fence it already was; nothing
-    // anywhere in the file is lost, and the whole file settles on the
-    // first pass.
+    // definition lists. Its ~300 bare `%` RST comment lines (whole
+    // commented-out entries) all sit *between* `::::::{glossary}` fences at
+    // the document's own top level, not inside any of them — so they become
+    // top-level `myst_comment` nodes (siblings of the `container_directive`
+    // fences), never interacting with `deflist.ts`'s own entry parsing at
+    // all. (`deflist.ts` separately handles a `%` run *inside* a fence, see
+    // the dedicated describe block above/below for that shape — this file
+    // just doesn't happen to use it.)
     const filePath = path.join(
       "/var/www/doc-model-approval/source_install/2_Glossary",
       "Terms_Definitions_Concepts.md"
@@ -792,13 +796,18 @@ describe("glossary becomes a real definition list", () => {
     expect(roundTrip(once)).toBe(once);
     const doc = parser.parse(once);
     let deflistCount = 0;
+    let commentCount = 0;
     doc?.descendants((node) => {
       if (node.type.name === "definition_list") {
         deflistCount++;
       }
+      if (node.type.name === "myst_comment") {
+        commentCount++;
+      }
       return true;
     });
     expect(deflistCount).toBeGreaterThan(0);
+    expect(commentCount).toBeGreaterThan(0);
   });
 });
 
@@ -1244,6 +1253,277 @@ describe("{term} role becomes a term_reference mark", () => {
     expect(
       marksOf(source).some((t) => t.marks.includes("term_reference"))
     ).toBe(false);
+  });
+});
+
+/**
+ * A `%` line comment — invisible in Sphinx output — becomes a `myst_comment`
+ * node instead of the literal `%`-prefixed paragraph text it used to be: one
+ * node per source line, holding the line as it was before `%` was put in
+ * front of it, and writing back exactly as it was read.
+ */
+describe("% comments become myst_comment nodes", () => {
+  function mystComments(source: string): string[] {
+    const found: string[] = [];
+    parser.parse(source)?.descendants((node) => {
+      if (node.type.name === "myst_comment") {
+        found.push(node.textContent);
+      }
+      return true;
+    });
+    return found;
+  }
+
+  function commentAttrs(source: string) {
+    const found: { text: string; tight: boolean; spaced: boolean }[] = [];
+    parser.parse(source)?.descendants((node) => {
+      if (node.type.name === "myst_comment") {
+        found.push({
+          text: node.textContent,
+          tight: node.attrs.tight,
+          spaced: node.attrs.spaced,
+        });
+      }
+      return true;
+    });
+    return found;
+  }
+
+  function topLevel(source: string): string[] {
+    const found: string[] = [];
+    parser.parse(source)?.forEach((node) => {
+      found.push(node.type.name);
+    });
+    return found;
+  }
+
+  test("a single line keeps its content, not the marker's space", () => {
+    const source = "% a MyST comment";
+    expect(commentAttrs(source)).toEqual([
+      { text: "a MyST comment", tight: false, spaced: true },
+    ]);
+    expect(roundTrip(source)).toBe(source);
+  });
+
+  test("no space after the marker", () => {
+    const source = "%no-space";
+    expect(commentAttrs(source)).toEqual([
+      { text: "no-space", tight: false, spaced: false },
+    ]);
+    expect(roundTrip(source)).toBe(source);
+  });
+
+  test("each consecutive line is its own node, written back without blank lines", () => {
+    const source = "% one\n% two\n% three";
+    expect(commentAttrs(source)).toEqual([
+      { text: "one", tight: false, spaced: true },
+      { text: "two", tight: true, spaced: true },
+      { text: "three", tight: true, spaced: true },
+    ]);
+    expect(roundTrip(source)).toBe(source);
+  });
+
+  test("a blank line between two comment lines is kept", () => {
+    const source = "% one\n\n% two";
+    expect(commentAttrs(source).map((c) => c.tight)).toEqual([false, false]);
+    expect(roundTrip(source)).toBe(source);
+  });
+
+  test("indentation after the marker is the line's own", () => {
+    // `% ` is the marker; the two spaces after it belong to the line.
+    const source = "%   indented";
+    expect(mystComments(source)).toEqual(["  indented"]);
+    expect(roundTrip(source)).toBe(source);
+  });
+
+  test("a run mixing %text and % text keeps every line exactly as written", () => {
+    // `%Term` has no marker space, so the run's leading spaces are content.
+    const source = "%Term\n%   Definition.";
+    expect(commentAttrs(source)).toEqual([
+      { text: "Term", tight: false, spaced: false },
+      { text: "   Definition.", tight: true, spaced: false },
+    ]);
+    expect(roundTrip(source)).toBe(source);
+  });
+
+  test("a comment line indented before its % keeps that indentation", () => {
+    const source = "% - one\n  %indented\n% - two";
+    expect(roundTrip(source)).toBe(source);
+  });
+
+  test("a bare % is a valid empty comment", () => {
+    expect(mystComments("%")).toEqual([""]);
+    expect(roundTrip("%")).toBe("%");
+  });
+
+  test("a trailing bare % in a run round-trips", () => {
+    const source = "% a\n%";
+    expect(mystComments(source)).toEqual(["a", ""]);
+    expect(roundTrip(source)).toBe(source);
+  });
+
+  test("a comment line keeps its trailing spaces (a hard break)", () => {
+    const source = "% Line one.  \n% Line two.";
+    expect(mystComments(source)).toEqual(["Line one.  ", "Line two."]);
+    expect(roundTrip(source)).toBe(source);
+  });
+
+  test("a commented-out nested list round-trips line for line", () => {
+    const source = [
+      "% -  Retrieve the data for each item:",
+      "%    -  The license plate detected by the camera;",
+      "%    -  The legal speed limit;",
+      "% -  Validate or reject for each candidate violator",
+    ].join("\n");
+    expect(mystComments(source)).toEqual([
+      "-  Retrieve the data for each item:",
+      "   -  The license plate detected by the camera;",
+      "   -  The legal speed limit;",
+      "-  Validate or reject for each candidate violator",
+    ]);
+    expect(roundTrip(source)).toBe(source);
+  });
+
+  // The serializer separates two sibling blocks with a blank line
+  // (`flushClose`'s default), the convention every other node in this file
+  // lives with — see "admonition bodies gain a trailing blank line" above.
+  // A `%` line needs no blank line to end the block before it on *parse*
+  // (these tests' structural assertions confirm it), but a source that
+  // arrived without one gains one on *write*. Only a comment line directly
+  // following another comment line is written back tight.
+
+  test("terminates a paragraph without a blank line", () => {
+    const source = "Prose.\n% hidden";
+    expect(topLevel(source)).toEqual(["paragraph", "myst_comment"]);
+    expect(roundTrip(source)).toBe("Prose.\n\n% hidden");
+  });
+
+  test("inside a list item", () => {
+    const source = "* item\n  % note";
+    expect(mystComments(source)).toEqual(["note"]);
+    expect(roundTrip(source)).toBe("* item\n\n  % note");
+  });
+
+  test("inside a blockquote", () => {
+    const source = "> quoted\n> % hidden";
+    expect(mystComments(source)).toEqual(["hidden"]);
+    expect(roundTrip(source)).toBe("> quoted\n>\n> % hidden");
+  });
+
+  test("inside a {note} body", () => {
+    const source = "```{note}\nBody.\n\n% hidden\n% hidden too\n\n```";
+    expect(mystComments(source)).toEqual(["hidden", "hidden too"]);
+    expect(roundTrip(source)).toBe(source);
+  });
+
+  test("inside an {ifconfig} body", () => {
+    const source = ":::{ifconfig} Class == 'A'\n% hidden\n:::";
+    expect(mystComments(source)).toEqual(["hidden"]);
+    // Same trailing-blank-line normalization the directive's own closing
+    // fence gets for any body.
+    expect(roundTrip(source)).toBe(
+      ":::{ifconfig} Class == 'A'\n% hidden\n\n:::"
+    );
+  });
+
+  test("50% of things is not a comment", () => {
+    expect(topLevel("50% of things")).toEqual(["paragraph"]);
+    expect(mystComments("50% of things")).toEqual([]);
+  });
+
+  test("4-space indent stays a code block, not a comment", () => {
+    // Not comment-specific: indented code always normalizes to a fence
+    // (`CodeBlock` inherits `CodeFence`'s `toMarkdown`). What matters is
+    // that the line stayed a `code_block` and never became a comment.
+    const source = "    % indented as code";
+    expect(topLevel(source)).toEqual(["code_block"]);
+    expect(roundTrip(source)).toBe("```\n% indented as code\n```");
+  });
+
+  test("a % line inside a code fence is untouched", () => {
+    const source = "```\n% not a comment\n```";
+    expect(mystComments(source)).toEqual([]);
+    expect(roundTrip(source)).toBe(source);
+  });
+
+  test("a comment immediately followed by a list", () => {
+    const source = "% c\n* item";
+    expect(topLevel(source)).toEqual(["myst_comment", "bullet_list"]);
+    expect(roundTrip(source)).toBe("% c\n\n* item");
+  });
+
+  test("a % run between two glossary entries splits the definition list", () => {
+    const source = [
+      ":::{glossary}",
+      "Term one",
+      "   Definition one.",
+      "",
+      "% Term two (commented)",
+      "%   Definition two.",
+      "",
+      "Term three",
+      "   Definition three.",
+      ":::",
+    ].join("\n");
+
+    const doc = parser.parse(source);
+    let directive: ProsemirrorNode | undefined;
+    doc?.descendants((node) => {
+      if (node.type.name === "container_directive") {
+        directive = node;
+        return false;
+      }
+      return true;
+    });
+    expect(directive).toBeTruthy();
+
+    const childTypes: string[] = [];
+    directive?.forEach((node) => childTypes.push(node.type.name));
+    expect(childTypes).toEqual([
+      "definition_list",
+      "myst_comment",
+      "myst_comment",
+      "definition_list",
+    ]);
+    expect(mystComments(source)).toEqual([
+      "Term two (commented)",
+      "  Definition two.",
+    ]);
+    // Trailing-blank-line normalization again, before the directive's own
+    // closing fence.
+    expect(roundTrip(source)).toBe(source.replace(/\n:::$/, "\n\n:::"));
+  });
+
+  test("a comment-only glossary body declines, same as any other malformed body", () => {
+    const source = ":::{glossary}\n% just a comment\n:::";
+    expect(roundTrip(source)).toBe(source);
+    expect(mystComments(source)).toEqual([]);
+  });
+
+  test("the real operating_principle.md file round-trips stably", () => {
+    // 21 consecutive and blank-separated `%` lines, among them a
+    // commented-out two-level list.
+    const filePath = path.join(
+      "/var/www/doc-model-approval/source_install/3_Description_of_an_AverageSpeed_system",
+      "20_Operating_principle/operating_principle.md"
+    );
+    let source: string;
+    try {
+      source = fs.readFileSync(filePath, "utf-8");
+    } catch {
+      return; // Not available outside this machine's checkout — skip quietly.
+    }
+    const once = roundTrip(source);
+    expect(roundTrip(once)).toBe(once);
+    // Every comment line comes back exactly as it was in the source,
+    // trailing spaces (hard breaks) included.
+    const sourceComments = source
+      .split("\n")
+      .filter((line) => line.startsWith("%"));
+    const writtenComments = once
+      .split("\n")
+      .filter((line) => line.startsWith("%"));
+    expect(writtenComments).toEqual(sourceComments);
   });
 });
 
