@@ -13,7 +13,10 @@ import type { Primitive } from "utility-types";
 import { insertGlossary } from "../commands/definitionList";
 import { DEFAULT_FENCE_LENGTH, requiredFenceLength } from "../lib/fenceLength";
 import type { MarkdownSerializerState } from "../lib/markdown/serializer";
-import directivesRule, { parseDirectiveInfo } from "../rules/directives";
+import directivesRule, {
+  isVerbatimDirective,
+  readDirectiveInfo,
+} from "../rules/directives";
 import { EditorStyleHelper } from "../styles/EditorStyleHelper";
 import type { ComponentProps } from "../types";
 import Node from "./Node";
@@ -33,15 +36,16 @@ function formatDirectiveLabel(directive: string, argument: string): string {
 }
 
 /**
- * A MyST directive Outline gives a real, structured node to instead of the
- * inert `CodeFence` every other directive falls back to — `{ifconfig}`,
- * `{grid}`, `{grid-item}` and `{margin}` today (see `DIRECTIVE_ALLOWLIST` in
- * `shared/editor/rules/directives.ts`).
+ * Any MyST directive that has no dedicated node (notices, figures and
+ * `{glossary}` have their own). The body of one on `DIRECTIVE_ALLOWLIST` in
+ * `shared/editor/rules/directives.ts` — `{ifconfig}`, `{grid}`,
+ * `{grid-item}`, `{margin}` — is parsed as Markdown; every other directive's
+ * body (`{raw}`, `{eval-rst}`, `{tabularcolumns}`, custom ones) is held as a
+ * single code block and written back verbatim (`isVerbatimDirective`).
  *
  * Unlike `Notice`, which always writes itself back with a backtick fence
  * regardless of how it arrived, this preserves whichever character it
- * arrived with (`fenceChar`) — matching the byte-exact promise the inert
- * `CodeFence` fallback already makes for these same directive names, since
+ * arrived with (`fenceChar`), byte for byte, since
  * real content uses both forms (`{margin}` is backtick-fenced throughout
  * `Functional_architecture.md`; `{ifconfig}`/`{grid}` are colon-fenced
  * everywhere else seen).
@@ -51,11 +55,8 @@ function formatDirectiveLabel(directive: string, argument: string): string {
  * directly rather than `CodeFence`'s `Decoration.widget` mechanism, since
  * this node already has a React `component` `CodeFence` does not.
  *
- * Only the *shape* is validated on commit — braced, and naming a directive
- * still on `DIRECTIVE_ALLOWLIST` (anything else has nowhere left to be
- * written back to on the next save, silently downgrading to a plain
- * `CodeFence` the next time the document is parsed from markdown, not
- * visibly on the spot). The argument itself — `2` in `{grid} 2`, a
+ * Only the *shape* is validated on commit — a braced directive name. The
+ * argument itself — `2` in `{grid} 2`, a
  * condition in `{ifconfig} Class == 'A'` — is free text: what it means, or
  * whether it makes sense for whatever consumes this directive outside
  * Outline, is left entirely to whoever is editing it.
@@ -222,9 +223,8 @@ export default class Directive extends Node {
 
   /**
    * Commits an edited label on blur — but only a syntactically valid one.
-   * `parseDirectiveInfo` requires braces and an allowlisted name; anything
-   * else (a typo in the braces, a name this node can no longer represent)
-   * is rejected outright and the field snaps back to the last good value,
+   * `readDirectiveInfo` requires a braced name; anything else (a typo in
+   * the braces) is rejected outright and the field snaps back to the last good value,
    * rather than writing an attribute combination this node cannot itself
    * write back out to matching markdown on the next save. The argument
    * half of a valid edit is never second-guessed — see the class doc.
@@ -246,7 +246,7 @@ export default class Directive extends Node {
       // `allowBare: true`, which additionally accepts a bare directive name
       // because that is how a *source* colon fence is legitimately written,
       // not because that is what this field ever shows.
-      const parsed = parseDirectiveInfo(typed, { allowBare: false });
+      const parsed = readDirectiveInfo(typed, { allowBare: false });
       if (!parsed) {
         event.currentTarget.innerText = currentLabel;
         event.currentTarget.classList.add(
@@ -340,7 +340,16 @@ export default class Directive extends Node {
       // matching Notice's own convention for the same thing.
       state.write(`${node.attrs.options}\n\n`);
     }
-    state.renderContent(node);
+    if (isVerbatimDirective(node)) {
+      // The body is whatever the directive holds (LaTeX, reStructuredText…),
+      // not Markdown: written as-is, never escaped or wrapped in a fence.
+      node.forEach((child) => {
+        state.text(child.textContent, false);
+        state.ensureNewLine();
+      });
+    } else {
+      state.renderContent(node);
+    }
     state.ensureNewLine();
     state.write(fence);
     state.closeBlock(node);
@@ -350,7 +359,7 @@ export default class Directive extends Node {
     return {
       block: "container_directive",
       getAttrs: (tok: Token) => {
-        const parsed = parseDirectiveInfo(tok.info ?? "", { allowBare: true });
+        const parsed = readDirectiveInfo(tok.info ?? "", { allowBare: true });
         return {
           directive: parsed?.directive ?? "",
           argument: parsed?.argument ?? "",

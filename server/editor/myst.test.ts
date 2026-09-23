@@ -312,6 +312,95 @@ describe("a table inside a notice no longer empties the block", () => {
  * it one once written back out — a real deflist node (step 4) is needed
  * before that can round-trip as anything other than opaque text.
  */
+/**
+ * Every directive without a dedicated node — `{raw}`, `{tabularcolumns}`,
+ * `{eval-rst}`, custom ones — becomes a `container_directive` whose body is
+ * one code block, written back verbatim: its body is not Markdown, so it is
+ * never re-parsed or escaped.
+ */
+describe("every other directive becomes a directive block with a verbatim body", () => {
+  test.each([
+    ["{raw} latex", ":::{raw} latex\n\\begingroup\n\\footnotesize\n:::"],
+    [
+      "{tabularcolumns} with no body",
+      ":::{tabularcolumns} |\\Y{0.4}|\\Y{0.6}|\n:::",
+    ],
+    ["backtick {raw}", "```{raw} latex\n\\endgroup\n```"],
+    [
+      "{eval-rst} holding its own backtick fence",
+      "````{eval-rst}\n.. code::\n\n```\nx = 1\n```\n````",
+    ],
+    [
+      "a wider fence than needed keeps its width",
+      "````{raw} html\n<br/>\n````",
+    ],
+    [
+      "nested in an {ifconfig}",
+      "::::{ifconfig} Class == 'A'\n:::{raw} latex\n\\newpage\n:::\n\n::::",
+    ],
+    [
+      "a directive with options",
+      "```{csv-table} Title\n:header: a, b\n\n1, 2\n```",
+    ],
+  ])("%s round-trips byte for byte", (_name, source) => {
+    expect(roundTrip(source)).toBe(source);
+    expect(roundTrip(roundTrip(source))).toBe(source);
+  });
+
+  test("the body is a code block inside the directive, not parsed Markdown", () => {
+    const doc = parser.parse(
+      ":::{raw} latex\n\\begingroup\n\\footnotesize\n:::"
+    )!;
+    const directive = doc.firstChild!;
+    expect(directive.type.name).toBe("container_directive");
+    expect(directive.attrs.directive).toBe("raw");
+    expect(directive.attrs.argument).toBe("latex");
+    expect(directive.attrs.fenceChar).toBe(":");
+    expect(directive.childCount).toBe(1);
+    expect(directive.firstChild!.type.name).toBe("code_block");
+    expect(directive.firstChild!.textContent).toContain(
+      "\\begingroup\n\\footnotesize"
+    );
+  });
+
+  test("the body is highlighted in the argument's language when Outline knows it", () => {
+    const doc = parser.parse("```{code-block} python\nprint(1)\n```")!;
+    expect(doc.firstChild!.firstChild!.attrs.language).toBe("python");
+  });
+
+  test("the real Cam_specifications.md keeps its {raw} and {tabularcolumns} blocks", () => {
+    const filePath = path.join(
+      "/var/www/doc-model-approval/source_install/3_Description_of_an_AverageSpeed_system",
+      "50_The_camera/2_Camera_characteristics/3_Cam_specifications/Cam_specifications.md"
+    );
+    let source: string;
+    try {
+      source = fs.readFileSync(filePath, "utf-8");
+    } catch {
+      return; // Not available outside this machine's checkout — skip quietly.
+    }
+    const doc = parser.parse(source)!;
+    const names: string[] = [];
+    doc.descendants((node) => {
+      if (node.type.name === "container_directive") {
+        names.push(node.attrs.directive);
+      }
+    });
+    expect(names).toEqual(
+      expect.arrayContaining(["raw", "tabularcolumns", "raw"])
+    );
+    const once = roundTrip(source);
+    expect(roundTrip(once)).toBe(once);
+    for (const block of [
+      ":::{raw} latex\n\\begingroup\n\\footnotesize\n:::",
+      ":::{tabularcolumns} |\\Y{0.4}|\\Y{0.6}|\n:::",
+      ":::{raw} latex\n\\endgroup\n:::",
+    ]) {
+      expect(once).toContain(block);
+    }
+  });
+});
+
 describe("colon-fenced directives with no node at all still round-trip byte for byte", () => {
   test.each([
     [

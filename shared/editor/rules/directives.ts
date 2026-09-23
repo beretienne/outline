@@ -1,6 +1,8 @@
 import type MarkdownIt from "markdown-it";
 import type Token from "markdown-it/lib/token.mjs";
 import customFence from "markdown-it-container";
+import type { Node as ProsemirrorNode } from "prosemirror-model";
+import { codeLanguages } from "../lib/code";
 
 // A MyST option line, e.g. `:gutter: 0`. Duplicated from `notices.ts` rather
 // than imported — `notices.ts` itself imports from this file (to defer to
@@ -66,6 +68,27 @@ export function parseDirectiveInfo(
   info: string,
   { allowBare }: { allowBare: boolean }
 ): ParsedDirective | undefined {
+  const parsed = readDirectiveInfo(info, { allowBare });
+  if (!parsed || !DIRECTIVE_ALLOWLIST.includes(parsed.directive)) {
+    return undefined;
+  }
+  return parsed;
+}
+
+/**
+ * Read a fence's info string as any MyST directive, allowlisted or not —
+ * `{raw} latex`, `{tabularcolumns} |l|l|`, a project's own custom directive.
+ *
+ * @param info - the fence token's info string.
+ * @param options.allowBare - accept `ifconfig` as well as `{ifconfig}`, see
+ * `parseDirectiveInfo`.
+ * @returns the directive and its argument, or undefined if the info string
+ * does not open a directive.
+ */
+export function readDirectiveInfo(
+  info: string,
+  { allowBare }: { allowBare: boolean }
+): ParsedDirective | undefined {
   const trimmed = info.trim();
   const braced = /^\{([A-Za-z0-9_-]+)\}\s*(.*)$/.exec(trimmed);
   const match =
@@ -74,12 +97,39 @@ export function parseDirectiveInfo(
     return undefined;
   }
 
-  const directive = match[1].toLowerCase();
-  if (!DIRECTIVE_ALLOWLIST.includes(directive)) {
-    return undefined;
-  }
+  return {
+    directive: match[1].toLowerCase(),
+    argument: match[2].trim(),
+    braced: braced !== null,
+  };
+}
 
-  return { directive, argument: match[2].trim(), braced: braced !== null };
+/**
+ * Whether a `container_directive` node holds its body verbatim rather than
+ * as Markdown: a directive off `DIRECTIVE_ALLOWLIST` (`{raw}`, `{eval-rst}`,
+ * `{tabularcolumns}`, a custom one…) whose content is only code blocks. Its
+ * body is then written back exactly as stored — LaTeX, reStructuredText or
+ * anything else MyST hands to the directive untouched — instead of as nested
+ * code fences.
+ *
+ * @param node - the node to check.
+ * @returns true when the node's body is written back verbatim.
+ */
+export function isVerbatimDirective(node: ProsemirrorNode): boolean {
+  if (
+    node.type.name !== "container_directive" ||
+    DIRECTIVE_ALLOWLIST.includes(node.attrs.directive) ||
+    node.childCount === 0
+  ) {
+    return false;
+  }
+  let allCode = true;
+  node.forEach((child) => {
+    if (child.type.name !== "code_block" && child.type.name !== "code_fence") {
+      allCode = false;
+    }
+  });
+  return allCode;
 }
 
 /** Block tokens a directive node has nowhere to put — see `Directive`'s
@@ -303,6 +353,77 @@ function directiveOptions(md: MarkdownIt): void {
   });
 }
 
+/**
+ * Turn every directive fence still left as a plain `fence` token into a
+ * directive block holding its body verbatim, so `{raw} latex`,
+ * `{tabularcolumns}`, `{eval-rst}` or a project's custom directive show as
+ * the same directive block `{ifconfig}` does rather than as a code block
+ * with the fence line for a label.
+ *
+ * MyST's syntax is the same for every directive, but whether the body is
+ * Markdown is up to the directive: `{raw}` holds LaTeX, `{eval-rst}`
+ * reStructuredText. Parsing an unknown body as Markdown would merge its lines
+ * and escape its backslashes, so it stays one code block inside the
+ * directive, written back byte for byte (see `isVerbatimDirective`).
+ *
+ * Registered with `push`, so it runs after every rule that claims a
+ * directive fence for a dedicated node (notices, allowlisted directives,
+ * figures) and after `code-fence-options` has lifted the option lines, which
+ * move to the directive. Allowlisted names are skipped: see the loop.
+ *
+ * @param md - the markdown-it instance to register the rule on.
+ */
+function verbatimDirectives(md: MarkdownIt): void {
+  md.core.ruler.push("directive-verbatim", (state) => {
+    const tokens = state.tokens;
+
+    for (let i = tokens.length - 1; i >= 0; i--) {
+      const token = tokens[i];
+      if (token.type !== "fence") {
+        continue;
+      }
+      const parsed = readDirectiveInfo(token.info, { allowBare: false });
+      if (!parsed || DIRECTIVE_ALLOWLIST.includes(parsed.directive)) {
+        // An allowlisted directive still left as a fence here is one whose
+        // body holds something a directive block cannot (see
+        // `guardDirectiveContent`), or `{glossary}`, whose own rule runs
+        // after this one — both stay as they are.
+        continue;
+      }
+
+      const openToken = new state.Token("container_directive_open", "div", 1);
+      openToken.info = token.info;
+      openToken.markup = token.markup;
+      openToken.block = true;
+      openToken.map = token.map;
+      openToken.meta = { options: token.meta?.options ?? "" };
+
+      // The body keeps the argument's language for highlighting when Outline
+      // knows it (`{code-block} python`), plain text otherwise.
+      const language = parsed.argument.split(/\s/)[0].toLowerCase();
+      const body = new state.Token("fence", "code", 0);
+      body.info = Object.prototype.hasOwnProperty.call(codeLanguages, language)
+        ? language
+        : "none";
+      body.markup = "```";
+      body.content = token.content;
+      body.block = true;
+      body.map = token.map;
+
+      const closeToken = new state.Token(
+        "container_directive_close",
+        "div",
+        -1
+      );
+      closeToken.block = true;
+
+      tokens.splice(i, 1, openToken, body, closeToken);
+    }
+
+    return false;
+  });
+}
+
 export default function directives(md: MarkdownIt): void {
   customFence(md, "directive", {
     marker: ":",
@@ -334,4 +455,5 @@ export default function directives(md: MarkdownIt): void {
   mystDirectiveFences(md);
   guardDirectiveContent(md);
   directiveOptions(md);
+  verbatimDirectives(md);
 }

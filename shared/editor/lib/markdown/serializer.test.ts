@@ -54,16 +54,22 @@ describe("code fences", () => {
   });
 
   it("keeps the argument of a MyST directive in the fence info string", () => {
-    // {toctree}, unlike {figure}, has no native node in Outline and so is
-    // never claimed away from CodeFence — see server/editor/myst.test.ts's
-    // "unsupported directive" cases for the directives that stay this way.
-    const doc = parser.parse("```{toctree} Contents\ndoc1\n```");
+    // A directive fence parses into a directive block, but a code block can
+    // still carry one as its language (typed as ```{toctree} in the editor).
+    const doc = Node.fromJSON(schema, {
+      type: "doc",
+      content: [
+        {
+          type: "code_block",
+          attrs: { language: "{toctree} Contents" },
+          content: [{ type: "text", text: "doc1" }],
+        },
+      ],
+    });
+    const output = serializer.serialize(doc);
 
-    expect(doc?.firstChild?.type.name).toBe("code_block");
-    expect(doc?.firstChild?.attrs.language).toBe("{toctree} Contents");
-
-    const output = serializer.serialize(doc!);
     expect(output.split("\n")[0]).toBe("```{toctree} Contents");
+    expect(parser.parse(output)?.firstChild?.attrs.argument).toBe("Contents");
   });
 
   it("collapses whitespace in a directive info string to one line", () => {
@@ -80,7 +86,9 @@ describe("code fences", () => {
     const output = serializer.serialize(doc);
 
     expect(output.split("\n")[0]).toBe("```{toctree} Contents not a new line");
-    expect(parser.parse(output)?.firstChild?.type.name).toBe("code_block");
+    expect(parser.parse(output)?.firstChild?.type.name).toBe(
+      "container_directive"
+    );
   });
 
   it("serializes an unsafe language attribute as a single safe token", () => {

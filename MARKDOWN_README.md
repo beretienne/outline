@@ -244,7 +244,8 @@ All come through perfectly.
 the HTML site and in the PDF alike — never a new page. Outline keeps it as a
 page break on its side, so nothing is lost in the sync, but it does nothing
 more than a divider in the manual. For a real new page in the PDF, the source
-uses a raw LaTeX block, which Outline shows as a grey code block:
+uses a raw LaTeX block, which Outline shows as a framed directive box holding
+the LaTeX as plain text (see [Every other directive](#every-other-directive--raw-eval-rst-tabularcolumns-and-custom-ones)):
 
 ````markdown
 ```{eval-rst}
@@ -283,9 +284,22 @@ and comes back as the MyST directive you would have written by hand.
 | Margin note | `{margin}` | |
 | Glossary | `{glossary}` | Starts with one blank entry, described below. |
 
-The name and argument in the corner can be edited in place; a name that is not
-one of these five is refused rather than saved as something Outline could not
-write back. What the argument means to Sphinx is up to you.
+The name and argument in the corner can be edited in place; a label without
+braces around the name is refused. What the argument means to Sphinx is up to
+you.
+
+#### Every other directive — {raw}, {eval-rst}, {tabularcolumns} and custom ones
+
+Any other directive — `{raw} latex`, `{eval-rst}`, `{tabularcolumns}`,
+`{toctree}`, `{dropdown}`, a project's own `{vm}` — shows as the same framed box
+with its name and argument in the corner, editable the same way. What is inside
+is **not** read as Markdown: MyST hands it to the directive as it is (LaTeX,
+reStructuredText, a CSV table…), so Outline keeps it in a plain-text area and
+writes it back exactly, character for character. A directive with no content,
+such as `{tabularcolumns} |\Y{0.4}|\Y{0.6}|`, has an empty text area.
+
+Option lines (`:header: a, b`) are kept with the directive and written back
+before its content, followed by a blank line.
 
 **A glossary** is a list of terms and definitions. Type the term, press Enter to
 move to its definition, and press Enter twice to start the next entry. To
@@ -533,9 +547,10 @@ small dimmed tag described in
 [Cross-reference targets](#cross-reference-targets--lines-reading-label)
 above, rather than staying a plain paragraph of parenthesised text.
 
-While you are editing, the ones Outline has no button for appear as plain grey
-code blocks rather than rendered content. That is Outline holding them safe for
-you rather than trying to interpret them.
+While you are editing, the ones Outline has no button for appear as framed
+directive boxes holding their content as plain text rather than rendered
+content (see [Every other directive](#every-other-directive--raw-eval-rst-tabularcolumns-and-custom-ones)).
+That is Outline holding them safe for you rather than trying to interpret them.
 
 **Two directives are simplified by the sync tool** on the way in, and stay
 simplified:

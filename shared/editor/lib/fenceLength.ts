@@ -1,5 +1,6 @@
 import type { Node as ProsemirrorNode } from "prosemirror-model";
 import { longestRun } from "../nodes/CodeFence";
+import { isVerbatimDirective } from "../rules/directives";
 
 /** A fence when it contains nothing that could collide with it. */
 export const DEFAULT_FENCE_LENGTH = 3;
@@ -39,7 +40,18 @@ export function requiredFenceLength(
   fenceChar: string = "`"
 ): number {
   let innerMax = 0;
-  node.descendants((child) => {
+  node.descendants((child, _pos, parent) => {
+    if (
+      (child.type.name === "code_fence" || child.type.name === "code_block") &&
+      parent &&
+      isVerbatimDirective(parent)
+    ) {
+      // A verbatim directive's body is written bare, with no fence of its
+      // own, so only a run of `fenceChar` in the text itself can collide.
+      const contentRun = longestRun(child.textContent, fenceChar);
+      innerMax = Math.max(innerMax, contentRun >= 3 ? contentRun : 0);
+      return false;
+    }
     if (child.type.name === "code_fence" || child.type.name === "code_block") {
       const childFenceChar: string = child.attrs.fenceChar || "`";
       const contentRun = longestRun(child.textContent, fenceChar);
