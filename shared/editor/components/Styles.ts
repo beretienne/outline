@@ -1494,7 +1494,15 @@ ${
 /* A MyST % comment line: never published, so never drawn as ordinary
    prose — greyed out, behind a thin rule, and nothing more. One node per
    source line: consecutive lines ([data-tight]) sit flush against each
-   other so a commented-out block reads as one block, its rule unbroken. */
+   other so a commented-out block reads as one block, its rule unbroken.
+   The rule is drawn at full opacity in a mid-tone grey (textTertiary)
+   rather than the paler placeholder tone: a comment inside a directive or
+   notice sits on top of that block's own tinted background, and a faint
+   placeholder-coloured rule all but disappears there — textTertiary reads
+   the same whether the surface behind it is the plain page, a directive's
+   pale card, or a notice's coloured tint. The text itself stays dimmed at
+   placeholder, since that only has to differ from the surrounding prose,
+   not compete with a tinted background the way the marker rule does. */
 .${EditorStyleHelper.mystComment} {
   position: relative;
   margin: 0.5em 0 0;
@@ -1515,8 +1523,7 @@ ${
     top: 0;
     bottom: 0;
     width: 2px;
-    background: ${props.theme.placeholder};
-    opacity: 0.5;
+    background: ${props.theme.textTertiary};
   }
 }
 
