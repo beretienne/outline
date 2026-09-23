@@ -22,10 +22,12 @@ import {
   PaletteIcon,
   CollapseIcon,
   LibraryIcon,
+  HashtagIcon,
 } from "outline-icons";
 import { v4 as uuidv4 } from "uuid";
 import CellBackgroundColorPicker from "../components/CellBackgroundColorPicker";
 import HighlightColorPicker from "../components/HighlightColorPicker";
+import { MystRoleInput } from "../components/MystRoleInput";
 
 import { getDocumentHighlightColors } from "@shared/editor/queries/getDocumentHighlightColors";
 import { getMarksBetween } from "@shared/editor/queries/getMarksBetween";
@@ -82,6 +84,18 @@ export default function formattingMenuItems(ctx: SelectionContext): MenuItem[] {
     : getMarksBetween(state.selection.from, state.selection.to, state).find(
         ({ mark }) => mark.type === schema.marks.highlight
       )?.mark;
+
+  // The MyST role on the selection, whose name prefills the Role field.
+  // Only the rich editor's schema has the mark.
+  const roleType = schema.marks.myst_role;
+  const role = !roleType
+    ? undefined
+    : isEmpty
+      ? state.selection.$from.marks().find((mark) => mark.type === roleType)
+      : getMarksBetween(state.selection.from, state.selection.to, state).find(
+          ({ mark }) => mark.type === roleType
+        )?.mark;
+  const roleName: string | undefined = role?.attrs.name;
 
   const cellSelectionHasBackground = isTableCell
     ? hasNodeAttrMarkCellSelection(
@@ -471,6 +485,19 @@ export default function formattingMenuItems(ctx: SelectionContext): MenuItem[] {
       icon: <LibraryIcon />,
       active: isMarkActive(schema.marks.term_reference),
       visible: canFormat && !!schema.marks.term_reference,
+    },
+    {
+      // Any other MyST role ({ref}, {abbr}, a project's own {dot}…). The
+      // dropdown holds a field for the role's name; on an existing role it
+      // renames or removes it. Needs text to attach to, or an existing role.
+      group: MenuItemGroup.inline,
+      tooltip: t("MyST role"),
+      icon: <HashtagIcon />,
+      active: () => !!role,
+      visible: canFormat && !!roleType && (!isEmpty || !!role),
+      children: (): MenuItem[] => [
+        { content: <MystRoleInput key={roleName} activeName={roleName} /> },
+      ],
     },
     {
       name: "separator",

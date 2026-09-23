@@ -12,6 +12,7 @@ import { mapMenuItems } from "../menus/mapMenuItems";
 import { useEditor } from "./EditorContext";
 import { MediaDimension } from "./MediaDimension";
 import ToolbarButton from "./ToolbarButton";
+import { ToolbarDropdownContext } from "./ToolbarDropdownContext";
 import ToolbarSeparator from "./ToolbarSeparator";
 import Tooltip from "./Tooltip";
 import { toMenuItems } from "~/components/Menu/transformer";
@@ -45,6 +46,8 @@ function ToolbarDropdown(props: ToolbarDropdownProps) {
   const handleOpenChange = useCallback((open: boolean) => {
     setIsOpen(open);
   }, []);
+
+  const dropdown = useMemo(() => ({ close: () => setIsOpen(false) }), []);
 
   const items: TMenuItem[] = useMemo(() => {
     if (!isOpen) {
@@ -84,7 +87,9 @@ function ToolbarDropdown(props: ToolbarDropdownProps) {
             aria-label={item.tooltip || t("More options")}
             onCloseAutoFocus={handleCloseAutoFocus}
           >
-            <EventBoundary>{toMenuItems(items)}</EventBoundary>
+            <ToolbarDropdownContext.Provider value={dropdown}>
+              <EventBoundary>{toMenuItems(items)}</EventBoundary>
+            </ToolbarDropdownContext.Provider>
           </MenuContent>
         </Menu>
       </MenuProvider>

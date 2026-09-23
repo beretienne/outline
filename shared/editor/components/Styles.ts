@@ -1491,6 +1491,32 @@ ${
   cursor: help;
 }
 
+/* Any other MyST role: nothing is resolved or linked, so it only needs to
+   read as "this is a role, and which one" — the content on a light chip,
+   the role's name in front of it, dimmed and smaller. The name is drawn by
+   CSS and is not part of the text, so it can't be edited or deleted by
+   accident; the role's own name is kept on the mark. */
+.${EditorStyleHelper.mystRole} {
+  background: ${props.theme.codeBackground};
+  border-radius: 3px;
+  padding: 0 3px;
+
+  &::before {
+    content: "{" attr(data-role) "}";
+    color: ${props.theme.placeholder};
+    font-family: ${props.theme.fontFamilyMono};
+    font-size: 0.8em;
+    margin-right: 2px;
+  }
+}
+
+/* A role being edited — text typed at its end still goes into it, until the
+   caret is moved away or → steps out. The outline shows where typing goes. */
+.${EditorStyleHelper.mystRoleEditing} {
+  border-radius: 3px;
+  box-shadow: 0 0 0 1px ${props.theme.accent};
+}
+
 /* A MyST % comment line: never published, so never drawn as ordinary
    prose — greyed out, behind a thin rule, and nothing more. One node per
    source line: consecutive lines ([data-tight]) sit flush against each

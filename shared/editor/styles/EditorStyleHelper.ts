@@ -136,6 +136,13 @@ export class EditorStyleHelper {
   /** A `{term}` role — an inline reference to a glossary entry. */
   static readonly termReference = "term-reference";
 
+  /** Any other MyST role (`{dot}`, `{ref}`, `{abbr}`…), its name in
+   * `data-role`. */
+  static readonly mystRole = "myst-role";
+
+  /** A MyST role whose content is being edited — typed text goes into it. */
+  static readonly mystRoleEditing = "myst-role-editing";
+
   // MyST
 
   /** A MyST `%` line comment — invisible in Sphinx, shown dimmed here. */

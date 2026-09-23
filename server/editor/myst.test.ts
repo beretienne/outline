@@ -91,12 +91,12 @@ describe("preserved exactly", () => {
   /**
    * Inline MyST constructs are opaque to Outline and travel as literal text.
    */
-  test.each([
-    ["role Outline has no mark for", "Press {kbd}`Ctrl` to continue."],
-    ["substitution", "The {{ CAM }} unit."],
-  ])("inline construct: %s", (_name, source) => {
-    expect(roundTrip(source)).toBe(source);
-  });
+  test.each([["substitution", "The {{ CAM }} unit."]])(
+    "inline construct: %s",
+    (_name, source) => {
+      expect(roundTrip(source)).toBe(source);
+    }
+  );
 });
 
 /**
@@ -1252,6 +1252,105 @@ describe("{term} role becomes a term_reference mark", () => {
     expect(
       marksOf(source).some((t) => t.marks.includes("term_reference"))
     ).toBe(false);
+  });
+});
+
+/**
+ * Every other role — `{dot}`, `{ref}`, `{abbr}`, a project's own custom
+ * roles — shares one `myst_role` mark carrying the role's name, rather than
+ * leaving `{name}` stranded as text in front of an inline-code span.
+ */
+describe("other roles become a myst_role mark", () => {
+  function rolesOf(source: string) {
+    const found: { text: string; name: string | null; marks: string[] }[] = [];
+    parser.parse(source)?.descendants((node) => {
+      if (node.isText) {
+        const role = node.marks.find((mark) => mark.type.name === "myst_role");
+        found.push({
+          text: node.text ?? "",
+          name: role ? role.attrs.name : null,
+          marks: node.marks.map((mark) => mark.type.name),
+        });
+      }
+    });
+    return found;
+  }
+
+  test("parses to the mark, the role's name kept, the delimiters dropped", () => {
+    expect(rolesOf("Item {dot}`1` is the lens.")).toEqual([
+      { text: "Item ", name: null, marks: [] },
+      { text: "1", name: "dot", marks: ["myst_role"] },
+      { text: " is the lens.", name: null, marks: [] },
+    ]);
+  });
+
+  test.each([
+    ["a custom role", "{dot}`1` Camera lens."],
+    [
+      "a cross-reference with its own text",
+      "See {ref}`the values <deployment_configuration_values>`.",
+    ],
+    ["braces inside the content", "An area of 1.0 mm{math}`^{2}` per core."],
+    ["a name with a hyphen", "Press {octicon}`arrow-right` to continue."],
+    ["a name with a colon", "See {py:func}`print` here."],
+    ["characters markdown would escape", "A {kbd}`Ctrl+*` key."],
+    ["several in one line", "{dot}`1` then {dot}`2`."],
+    ["next to a {term}", "{term}`CAM` and {dot}`3`."],
+    ["a backtick in the content", "A {kbd}``a`b`` key."],
+    ["inside a table cell", "| a   |\n|-----|\n| {dot}`1` |"],
+  ])("round-trips: %s", (_name, source) => {
+    const once = roundTrip(source);
+    expect(once.trim()).toBe(source);
+    expect(roundTrip(once)).toBe(once);
+  });
+
+  test("{term} keeps its own mark", () => {
+    expect(rolesOf("{term}`CAM` and {dot}`3`.")).toEqual([
+      { text: "CAM", name: null, marks: ["term_reference"] },
+      { text: " and ", name: null, marks: [] },
+      { text: "3", name: "dot", marks: ["myst_role"] },
+      { text: ".", name: null, marks: [] },
+    ]);
+  });
+
+  test("braces inside inline code are not a role", () => {
+    const source = "Request: `GET /detected-object/{unique_id}` here.";
+    expect(rolesOf(source).some((t) => t.name !== null)).toBe(false);
+    expect(roundTrip(source)).toBe(source);
+  });
+
+  test("a {{substitution}} is not a role", () => {
+    const source = "The {{CAM}}`x` unit.";
+    expect(rolesOf(source).some((t) => t.name !== null)).toBe(false);
+  });
+
+  test.each([
+    ["unclosed", "An {dot}`unclosed role."],
+    ["empty", "An {dot}`` role."],
+    ["no backticks", "An {dot} role."],
+    ["escaped", "An \\{dot}`1` role."],
+    ["split over two lines", "An {dot}`one\ntwo` role."],
+  ])("leaves a malformed role alone: %s", (_name, source) => {
+    expect(rolesOf(source).some((t) => t.name !== null)).toBe(false);
+  });
+
+  test("the real Functional_architecture.md keeps all 29 {dot} roles", () => {
+    const filePath = path.join(
+      "/var/www/doc-model-approval/source_install/3_Description_of_an_AverageSpeed_system",
+      "40_Functional_architecture/Functional_architecture.md"
+    );
+    let source: string;
+    try {
+      source = fs.readFileSync(filePath, "utf-8");
+    } catch {
+      return; // Not available outside this machine's checkout — skip quietly.
+    }
+    const dots = rolesOf(source).filter((t) => t.name === "dot");
+    expect(dots).toHaveLength(29);
+    const once = roundTrip(source);
+    expect(roundTrip(once)).toBe(once);
+    const count = (text: string) => (text.match(/\{dot\}`/g) ?? []).length;
+    expect(count(once)).toBe(count(source));
   });
 });
 

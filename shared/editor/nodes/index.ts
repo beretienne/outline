@@ -14,6 +14,7 @@ import Comment from "../marks/Comment";
 import Highlight from "../marks/Highlight";
 import Italic from "../marks/Italic";
 import Link from "../marks/Link";
+import MystRole from "../marks/MystRole";
 import TemplatePlaceholder from "../marks/Placeholder";
 import Strikethrough from "../marks/Strikethrough";
 import TermReference from "../marks/TermReference";
@@ -122,6 +123,9 @@ export const richExtensions: Nodes = [
   // order, and Code's own backtick rule matches the very keystroke that
   // closes a typed `` {term}`text` ``.
   TermReference,
+  // After `TermReference`, which claims `{term}` first, and for the same
+  // reason still ahead of `Code`: any other `` {name}`text` ``.
+  MystRole,
   ...inlineExtensions.filter((n) => n !== SimpleImage),
   Image,
   Figure,

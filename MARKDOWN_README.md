@@ -127,6 +127,39 @@ Sphinx reads what is between the backticks literally. Only the plain form is
 supported; Sphinx's `` {term}`Display text <target>` `` is kept as typed but not
 interpreted.
 
+### Other roles — the **MyST role** toolbar button, or typing `` {name}`text` ``
+
+Every other MyST role — `` {ref}`see the values <deployment_values>` ``,
+`` {abbr}`HTTP (HyperText Transfer Protocol)` ``, `` {math}`x^2` ``, or a role
+your project defines itself, like `` {dot}`1` `` — is shown as its text on a
+light background, with the role's name in small grey letters in front of it.
+
+Select some words and click **MyST role** (the **#** icon, next to Glossary
+term), type the role's name — `ref`, `abbr`, `dot` — and press **Enter**.
+Typing `` {dot}`1` `` with its closing backtick does the same, and pasted or
+synced text arrives as roles too.
+
+**To rename or remove one**, select its text (double-click works) and click
+**#** again: the field shows the current name — change it and press Enter, or
+click the bin to turn the role back into plain text. **Escape** closes the
+field without changing anything. Naming a role `term` makes it a glossary term.
+
+**To change what a role says**, just edit its text. Deleting its last
+character, or typing over it, keeps the role: it stays as an empty tag with
+its name until you type the new text. Once you have deleted or typed at its
+end, the role is outlined and everything you type goes into it; press **→**
+to step out and carry on typing after it, or just click elsewhere. Move the
+cursor away from an empty tag before typing and the empty role is dropped.
+
+Like a glossary term, it is a marker only: a `{ref}` is not a link in Outline,
+and nothing checks that the label it points at exists — that happens when
+Sphinx builds the manual. It travels exactly as written, and formatting can't
+be applied inside it.
+
+For a `{ref}`, Sphinx only finds link text on its own when the target sits
+right before a heading. Anywhere else, give it yourself:
+`` {ref}`see the values <deployment_values>` ``.
+
 ---
 
 ## Blocks
@@ -483,7 +516,7 @@ it:
 
 - directives Outline has no button for: `{eval-rst}`, `{raw}`, `{tabularcolumns}`
 - every admonition, with its title and its options
-- roles: `` {term}`resolution` `` (it has a toolbar button; other roles are kept as text)
+- roles: `` {term}`resolution` `` (it has a toolbar button), `` {ref}`…` ``, `` {dot}`1` `` and any other (shown as roles, see [Other roles](#other-roles--the-myst-role-toolbar-button-or-typing-nametext))
 - substitutions: `{{ CAM }}`
 - images with attributes: `![alt](photo.png){width="50%"}`
 - raw HTML
