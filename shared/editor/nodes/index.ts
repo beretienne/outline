@@ -42,6 +42,7 @@ import Math from "./Math";
 import MathBlock from "./MathBlock";
 import Mention from "./Mention";
 import MystComment from "./MystComment";
+import MystTarget from "./MystTarget";
 import Notice from "./Notice";
 import OrderedList from "./OrderedList";
 import Paragraph from "./Paragraph";
@@ -153,6 +154,7 @@ export const richExtensions: Nodes = [
   Heading,
   HeadingPrefix,
   HorizontalRule,
+  MystTarget,
   Highlight,
   TemplatePlaceholder,
   Math,

@@ -141,6 +141,10 @@ export class EditorStyleHelper {
   /** A MyST `%` line comment — invisible in Sphinx, shown dimmed here. */
   static readonly mystComment = "myst-comment";
 
+  /** A MyST `(label)=` cross-reference target — invisible in Sphinx, shown
+   * as a small dimmed chip here. */
+  static readonly mystTarget = "myst-target";
+
   // Suggestions
 
   /** Trigger character and search term while a suggestion menu is open */

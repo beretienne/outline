@@ -189,3 +189,79 @@ export default function comments(md: MarkdownIt): void {
     alt: ["paragraph", "reference", "blockquote", "list"],
   });
 }
+
+/**
+ * Parse a MyST `(label)=` cross-reference target line, mirroring
+ * `mdit_py_plugins.myst_blocks.target`: the whole line, trimmed, must open
+ * with `(`, close with `)=`, and hold at least one character of label in
+ * between (`(deployment_configuration_values)=`). Unlike a `%` comment run,
+ * a target is always exactly one line — MyST does not merge consecutive
+ * target lines the way it does comment lines.
+ *
+ * The label is what `{ref}`/`{numref}` elsewhere in the document point the
+ * following block at. Outline does not resolve or validate that link —
+ * this rule only keeps the target line itself readable and round-trippable
+ * instead of it reading as a stray paragraph of parenthesised text.
+ *
+ * Registered `before("hr")`, matching MyST's own registration order and
+ * `alt` list — a `(label)=` line, like an `hr`, ends a paragraph, list item
+ * or blockquote without needing a blank line first.
+ *
+ * @param state - the block parser state.
+ * @param startLine - the line this rule is being tried at.
+ * @param _endLine - the last line available to the parser (unused: a
+ * target is always exactly one line).
+ * @param silent - true when the parser is only checking whether this rule
+ * would match, not building a token.
+ * @returns whether a `(label)=` target was found (and, unless `silent`,
+ * tokenized).
+ */
+function target(
+  state: StateBlock,
+  startLine: number,
+  _endLine: number,
+  silent: boolean
+): boolean {
+  if (state.sCount[startLine] - state.blkIndent >= 4) {
+    return false;
+  }
+
+  const pos = state.bMarks[startLine] + state.tShift[startLine];
+  const max = state.eMarks[startLine];
+  const text = state.src.slice(pos, max).trim();
+
+  if (!text.startsWith("(") || !text.endsWith(")=") || text.length <= 3) {
+    return false;
+  }
+
+  if (silent) {
+    return true;
+  }
+
+  // `_open`/`text`/`_close`, not one self-closing token — the same reason
+  // `commentRunTokens` above gives: it lets the label come back as the
+  // node's own real, editable text content (`prosemirror-markdown`'s
+  // generic block-token handling copies an inline `text` token into a
+  // block node's content automatically), rather than an attribute that
+  // would need its own decorative, non-editable rendering.
+  const open = state.push("myst_target_open", "div", 1);
+  open.block = true;
+  open.map = [startLine, startLine + 1];
+  const label = state.push("text", "", 0);
+  label.content = text.slice(1, -2);
+  state.push("myst_target_close", "div", -1).block = true;
+
+  state.line = startLine + 1;
+  return true;
+}
+
+/**
+ * Registers the MyST `(label)=` cross-reference target block rule.
+ *
+ * @param md - the markdown-it instance to register the rule on.
+ */
+export function targets(md: MarkdownIt): void {
+  md.block.ruler.before("hr", "myst_target", target, {
+    alt: ["paragraph", "reference", "blockquote", "list", "footnote_def"],
+  });
+}

@@ -1527,6 +1527,50 @@ ${
   }
 }
 
+/* A MyST (label)= cross-reference target: nothing is rendered for it in
+   Sphinx either, so — like the comment above — it is shown rather than
+   hidden, but as a small chip rather than a full-width line, since it never
+   holds more than a short label. The "(" and ")=" either side are drawn by
+   CSS, never part of the node's own (real, editable) text content, so they
+   can never be typed over or left partly deleted.
+
+   A block-level flex row, not inline-block: as an inline-block, deleting
+   the label's last character left ProseMirror unable to map the DOM change
+   back, so the deletion was reverted and the caret jumped to the next
+   block. Flex rather than a plain block because of the empty state:
+   ProseMirror then fills the node with a trailing <br> for the caret to
+   sit on. In a flex row that <br> is just another item — it no longer
+   breaks the line — so it can stay in place between "(" and "label)=",
+   and the caret sits inside the parentheses. Hidden instead, the caret
+   had nothing to anchor to and was drawn before the "(". */
+.${EditorStyleHelper.mystTarget} {
+  display: flex;
+  align-items: baseline;
+  width: fit-content;
+  margin: 0.5em 0 0;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: ${props.theme.codeBackground};
+  color: ${props.theme.placeholder};
+  font-family: ${props.theme.fontFamilyMono};
+  font-size: 13px;
+  white-space: pre;
+
+  &::before {
+    content: "(";
+  }
+
+  &::after {
+    content: ")=";
+  }
+
+  /* :empty doesn't match here — the trailing <br> means the element always
+     has a child node — so emptiness is detected through it instead. */
+  &:has(> br.ProseMirror-trailingBreak)::after {
+    content: "label)=";
+  }
+}
+
 .${EditorStyleHelper.definitionTerm} {
   font-weight: 600;
   margin-top: 8px;

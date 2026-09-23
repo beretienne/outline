@@ -93,7 +93,6 @@ describe("preserved exactly", () => {
    */
   test.each([
     ["role Outline has no mark for", "Press {kbd}`Ctrl` to continue."],
-    ["cross-reference target", "(my-label)="],
     ["substitution", "The {{ CAM }} unit."],
   ])("inline construct: %s", (_name, source) => {
     expect(roundTrip(source)).toBe(source);
@@ -1587,6 +1586,102 @@ describe("% comments become myst_comment nodes", () => {
       .split("\n")
       .filter((line) => line.startsWith("%"));
     expect(writtenComments).toEqual(sourceComments);
+  });
+});
+
+/**
+ * A MyST `(label)=` cross-reference target — nothing is rendered for it in
+ * Sphinx either, but it assigns a label to whatever block follows for
+ * `{ref}`/`{numref}` elsewhere in the document to point at. Becomes a
+ * `myst_target` node instead of a stray paragraph of parenthesised text.
+ */
+describe("(label)= becomes a myst_target node", () => {
+  function targetLabels(source: string): string[] {
+    const found: string[] = [];
+    parser.parse(source)?.descendants((node) => {
+      if (node.type.name === "myst_target") {
+        found.push(node.textContent);
+      }
+      return true;
+    });
+    return found;
+  }
+
+  function topLevel(source: string): string[] {
+    const found: string[] = [];
+    parser.parse(source)?.forEach((node) => {
+      found.push(node.type.name);
+    });
+    return found;
+  }
+
+  test("a simple label round-trips", () => {
+    const source = "(my-label)=\n\nProse.";
+    expect(targetLabels(source)).toEqual(["my-label"]);
+    expect(roundTrip(source)).toBe(source);
+  });
+
+  test("terminates a paragraph without a blank line", () => {
+    const source = "Prose.\n(next)=\n\nMore.";
+    expect(topLevel(source)).toEqual(["paragraph", "myst_target", "paragraph"]);
+    expect(roundTrip(source)).toBe("Prose.\n\n(next)=\n\nMore.");
+  });
+
+  test("a single-character label is the minimum valid target", () => {
+    expect(targetLabels("(1)=")).toEqual(["1"]);
+    expect(roundTrip("(1)=")).toBe("(1)=");
+  });
+
+  test("empty parentheses are not a target", () => {
+    expect(topLevel("()=")).toEqual(["paragraph"]);
+    expect(targetLabels("()=")).toEqual([]);
+  });
+
+  test("missing the trailing = is not a target", () => {
+    expect(topLevel("(label)")).toEqual(["paragraph"]);
+  });
+
+  test("4-space indent stays a code block, not a target", () => {
+    const source = "    (indented)=";
+    expect(topLevel(source)).toEqual(["code_block"]);
+    expect(roundTrip(source)).toBe("```\n(indented)=\n```");
+  });
+
+  test("immediately followed by a heading", () => {
+    const source = "(intro)=\n\n# Title";
+    expect(topLevel(source)).toEqual(["myst_target", "heading"]);
+    expect(roundTrip(source)).toBe(source);
+  });
+
+  test("inside a list item", () => {
+    const source = "* item\n  (nested)=";
+    expect(targetLabels(source)).toEqual(["nested"]);
+    expect(roundTrip(source)).toBe("* item\n\n  (nested)=");
+  });
+
+  test("the real Functional_architecture.md file round-trips stably", () => {
+    // 29 `(N)=` targets, each directly followed (no blank line) by a
+    // `{dot}` role paragraph.
+    const filePath = path.join(
+      "/var/www/doc-model-approval/source_install/3_Description_of_an_AverageSpeed_system",
+      "40_Functional_architecture/Functional_architecture.md"
+    );
+    let source: string;
+    try {
+      source = fs.readFileSync(filePath, "utf-8");
+    } catch {
+      return; // Not available outside this machine's checkout — skip quietly.
+    }
+    const once = roundTrip(source);
+    expect(roundTrip(once)).toBe(once);
+    const sourceTargets = source
+      .split("\n")
+      .filter((line) => /^\([^)]+\)=$/.test(line));
+    const writtenTargets = once
+      .split("\n")
+      .filter((line) => /^\([^)]+\)=$/.test(line));
+    expect(writtenTargets).toEqual(sourceTargets);
+    expect(writtenTargets.length).toBe(29);
   });
 });
 

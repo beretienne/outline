@@ -24,6 +24,7 @@ import {
   CollapseIcon,
   SettingsIcon,
   CommentIcon,
+  TargetIcon,
 } from "outline-icons";
 import * as React from "react";
 import styled from "styled-components";
@@ -319,6 +320,12 @@ export default function blockMenuItems(
       title: t("Comment (not published)"),
       icon: <CommentIcon />,
       keywords: "myst sphinx comment hidden percent unpublished",
+    },
+    {
+      name: "myst_target",
+      title: t("Cross-reference target"),
+      icon: <TargetIcon />,
+      keywords: "myst sphinx target label anchor ref numref cross-reference",
     },
     {
       name: "separator",

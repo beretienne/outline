@@ -323,6 +323,20 @@ one comment it skips. A commented line *inside* a definition keeps its `%`,
 indented with the definition: that part goes through MyST again, where `%`
 works.
 
+### Cross-reference targets — lines reading `(label)=`
+
+A line by itself reading `(label)=` marks the block right after it — usually
+a heading or a figure — so `{ref}` and `{numref}` elsewhere in the manual can
+point at it by that label. Nothing is rendered for it in the built manual.
+
+Outline shows it as a small dimmed tag reading `(label)=`. Type `/` and pick
+**Cross-reference target** to insert one: the cursor is already inside it,
+so type the label straight away. Only the label is editable — the `(` and
+`)=` around it are not. **Enter** moves on to a new paragraph below.
+
+**To remove one**, delete its label, then press **Backspace** once more. A
+target left empty is not written to the Markdown at all.
+
 ### Maths
 
 Both `$x^2$` inside a sentence and standalone blocks work.
@@ -470,7 +484,6 @@ it:
 - directives Outline has no button for: `{eval-rst}`, `{raw}`, `{tabularcolumns}`
 - every admonition, with its title and its options
 - roles: `` {term}`resolution` `` (it has a toolbar button; other roles are kept as text)
-- cross-reference targets: `(my-label)=`
 - substitutions: `{{ CAM }}`
 - images with attributes: `![alt](photo.png){width="50%"}`
 - raw HTML
@@ -481,6 +494,11 @@ above) rather than either disappearing or staying literal `%`-prefixed
 text — Outline never silently drops content, and a MyST comment is no
 exception. Both `% text` and `%text` are understood, and an untouched comment
 writes back exactly as it was read.
+
+**Cross-reference targets are shown too.** A `(my-label)=` line becomes the
+small dimmed tag described in
+[Cross-reference targets](#cross-reference-targets--lines-reading-label)
+above, rather than staying a plain paragraph of parenthesised text.
 
 While you are editing, the ones Outline has no button for appear as plain grey
 code blocks rather than rendered content. That is Outline holding them safe for
