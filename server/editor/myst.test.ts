@@ -1500,6 +1500,51 @@ describe("% comments become myst_comment nodes", () => {
     expect(mystComments(source)).toEqual([]);
   });
 
+  /**
+   * A definition's body starting with `ensureNewLine` content — a comment,
+   * an `hr`, a nested directive or notice — used to write back with a
+   * spurious blank indented line before it: `DefinitionList.toMarkdown`
+   * writes the body's indent eagerly, before its content renders, which a
+   * plain paragraph continues on unnoticed but `ensureNewLine` mistook for
+   * "something is already on this line" and separated from — indent and
+   * all, since `wrapBlock` had already written it. Sphinx reads a blank
+   * line between a term and its definition as ending the definition list,
+   * so the entry (here, the whole rest of the glossary after it) silently
+   * fell out of the list on the very next parse.
+   */
+  test("a definition body starting with a comment keeps its term, no blank line", () => {
+    const source = [
+      ":::{glossary}",
+      "Term one",
+      "   Body one.",
+      "",
+      "Term two",
+      "   % Commented body.",
+      ":::",
+    ].join("\n");
+    // A directive body gains a trailing blank line before its closing
+    // fence regardless (see "admonition bodies gain a trailing blank line"
+    // above) — unrelated to this fix. What this pins is that no blank line
+    // appears *between the term and its comment*, which used to end the
+    // definition list there and drop "Term two" from it entirely.
+    expect(roundTrip(source)).toBe(source.replace(/\n:::$/, "\n\n:::"));
+    expect(topLevel(source)).toEqual(["container_directive"]);
+  });
+
+  test("a definition body starting with an hr keeps its term, no blank line", () => {
+    const source = [
+      ":::{glossary}",
+      "Term one",
+      "   Body one.",
+      "",
+      "Term two",
+      "   ---",
+      ":::",
+    ].join("\n");
+    expect(roundTrip(source)).toBe(source.replace(/\n:::$/, "\n\n:::"));
+    expect(topLevel(source)).toEqual(["container_directive"]);
+  });
+
   test("the real operating_principle.md file round-trips stably", () => {
     // 21 consecutive and blank-separated `%` lines, among them a
     // commented-out two-level list.

@@ -408,6 +408,29 @@ describe("MystComment comment out (Mod-/, the Comment menu entry)", () => {
       expect(breaks(state.doc)).toBe(1);
       expect(markdown(state.doc)).toBe(markdown(parser.parse(withBreak)!));
     });
+
+    it("un-comments a definition whose body is a single comment line", () => {
+      // Was silently declined: writing the region back out put a blank
+      // line between "Term two" and its body — MyST's own rule for ending
+      // a definition list there — so the round trip that reads the result
+      // back would have dropped the term. See the serializer test with the
+      // same shape for the root cause.
+      const source = [
+        ":::{glossary}",
+        "Term one",
+        "   Definition one.",
+        "",
+        "Term two",
+        "   % Commented definition.",
+        ":::",
+      ].join("\n");
+      const { applied, doc } = press("Backspace", source, [
+        "Commented definition.",
+      ]);
+      expect(applied).toBe(true);
+      expect(terms(doc)).toEqual(["Term one", "Term two"]);
+      expect(children(doc)).toEqual(["definition_list"]);
+    });
   });
 
   it("keeps a hard break through comment and back", () => {

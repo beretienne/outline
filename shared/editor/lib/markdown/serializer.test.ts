@@ -259,3 +259,56 @@ describe("table cell backgrounds", () => {
     expect(cell.content[0].content[0].text).toBe("<!-- note --> 1");
   });
 });
+
+/**
+ * `DefinitionList.toMarkdown` writes a body's indent eagerly, via
+ * `wrapBlock`, before the body's own content renders — a plain paragraph
+ * continues on that line unnoticed. A node that opens with `ensureNewLine`
+ * instead (`hr`, a MyST comment, a nested directive or notice) used to
+ * mistake that already-written indent for "something is on this line",
+ * and separated from it — landing its own content on the *next* line, with
+ * a bare, indented, otherwise empty line left in between. MyST reads a
+ * blank line between a term and its definition as ending the definition
+ * list, so this silently broke the entry the moment anything reread it.
+ */
+describe("ensureNewLine after a block's own indent, nothing else written yet", () => {
+  // A bare "Term\n---" at the top level is CommonMark's own setext heading
+  // syntax, not a definition; MyST's definition-list reading needs an
+  // enclosing directive to fire at all here, so every case below goes
+  // through one — a `{glossary}` fence, the shape the bug was found in.
+  function serializeGlossaryBody(bodyMarkdown: string): string {
+    const source = `:::{glossary}\nTerm\n   ${bodyMarkdown}\n:::`;
+    const parsed = parser.parse(source);
+    if (!parsed) {
+      throw new Error("parse failed");
+    }
+    return serializer.serialize(parsed, { commonMark: true });
+  }
+
+  it("an hr as a lone definition body writes on the term's very next line", () => {
+    expect(serializeGlossaryBody("---")).toBe(
+      ":::{glossary}\nTerm\n   ---\n\n:::"
+    );
+  });
+
+  it("a MyST comment as a lone definition body does the same", () => {
+    expect(serializeGlossaryBody("% a comment")).toBe(
+      ":::{glossary}\nTerm\n   % a comment\n\n:::"
+    );
+  });
+
+  it("still separates from real content already on the body's first line", () => {
+    // The opposite case `ensureNewLine` exists for: an hr as the body's
+    // *second* paragraph, after real text, gets its own blank-line
+    // separation exactly as any other two sibling blocks would — nothing
+    // about that ordinary case changes here.
+    const source = ":::{glossary}\nTerm\n   Body text.\n\n   ---\n:::";
+    const parsed = parser.parse(source);
+    if (!parsed) {
+      throw new Error("parse failed");
+    }
+    expect(serializer.serialize(parsed, { commonMark: true })).toBe(
+      source.replace(/\n:::$/, "\n\n:::")
+    );
+  });
+});

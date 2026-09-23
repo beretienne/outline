@@ -112,6 +112,15 @@ export class MarkdownSerializerState {
   delim = "";
   _out = "";
   lastChar = "";
+  // Whether the current line — since the last real "\n" — holds anything
+  // beyond whitespace. `wrapBlock` writes a block's indent eagerly, before
+  // its content renders, so an ordinary node continuing on that same line
+  // (a paragraph's own text) never sees a blank one. A node that starts
+  // with `ensureNewLine` instead (`HorizontalRule`, `MystComment`, a
+  // directive or notice) needs to tell that indent-only line apart from
+  // one that already holds real content trailing on it — `atBlank` alone
+  // cannot, since the indent has already moved `lastChar` off "" or "\n".
+  lineHasContent = false;
   options: Options;
   blockMap = null;
 
@@ -133,6 +142,10 @@ export class MarkdownSerializerState {
     }
     this._out = value;
     this.lastChar = value === "" ? "" : value.charAt(value.length - 1);
+    const lastNewline = value.lastIndexOf("\n");
+    this.lineHasContent = /\S/.test(
+      lastNewline === -1 ? value : value.slice(lastNewline + 1)
+    );
   }
 
   constructor(nodes, marks, options) {
@@ -140,6 +153,7 @@ export class MarkdownSerializerState {
     this.marks = marks;
     this.delim = this._out = "";
     this.lastChar = "";
+    this.lineHasContent = false;
     this.closed = false;
     this.inTightList = false;
     this.inTable = false;
@@ -156,13 +170,21 @@ export class MarkdownSerializerState {
   }
 
   // :: (string)
-  // Append a string to the output, tracking `lastChar` without reading
-  // characters back out of `out` — that would force V8 to flatten the
-  // internal rope, which is quadratic on large documents.
+  // Append a string to the output, tracking `lastChar` and `lineHasContent`
+  // without reading characters back out of `out` — that would force V8 to
+  // flatten the internal rope, which is quadratic on large documents. Only
+  // `content` itself, never the full `_out`, is scanned, so this stays
+  // cheap regardless of document size.
   append(content) {
     if (content) {
       this._out += content;
       this.lastChar = content.charAt(content.length - 1);
+      const lastNewline = content.lastIndexOf("\n");
+      if (lastNewline === -1) {
+        this.lineHasContent = this.lineHasContent || /\S/.test(content);
+      } else {
+        this.lineHasContent = /\S/.test(content.slice(lastNewline + 1));
+      }
     }
   }
 
@@ -207,9 +229,13 @@ export class MarkdownSerializerState {
   }
 
   // :: ()
-  // Ensure the current content ends with a newline.
+  // Ensure the current content ends with a newline — but never *only*
+  // because a block's own indent has just been written ahead of its
+  // content, which is not a line that needs separating from anything.
+  // `write`'s own re-indenting still goes by `atBlank` alone: it cares
+  // whether *this line's* delim has been applied yet, indent included.
   ensureNewLine() {
-    if (!this.atBlank()) {
+    if (!this.atBlank() && this.lineHasContent) {
       this.append("\n");
     }
   }
