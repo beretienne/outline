@@ -45,7 +45,12 @@ export default abstract class Node<
     return {};
   }
 
-  toMarkdown(_state: MarkdownSerializerState, _node: ProsemirrorNode) {
+  toMarkdown(
+    _state: MarkdownSerializerState,
+    _node: ProsemirrorNode,
+    _parent?: ProsemirrorNode,
+    _index?: number
+  ) {
     throw new Error("toMarkdown not implemented");
   }
 

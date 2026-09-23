@@ -206,6 +206,25 @@ never collide however deep the nesting goes.
 
 All come through perfectly.
 
+**A page break is a divider in the manual.** Outline's "Page break" is written
+`***`, which Sphinx reads exactly like a divider (`---`): a horizontal line, in
+the HTML site and in the PDF alike — never a new page. Outline keeps it as a
+page break on its side, so nothing is lost in the sync, but it does nothing
+more than a divider in the manual. For a real new page in the PDF, the source
+uses a raw LaTeX block, which Outline shows as a grey code block:
+
+````markdown
+```{eval-rst}
+.. raw:: latex
+
+   \pagebreak
+```
+````
+
+**Not directly under a heading.** Sphinx refuses a divider (or page break) as
+the very first thing in the page or in a section — the build reports it as an
+error. Put at least a line of text between the heading and the divider.
+
 **Shading a table cell** stays in Outline, and comes back after a sync. A
 shaded cell opens with a small HTML comment naming its colour, which the manual
 does not show — the cell simply reads as plain:
@@ -269,10 +288,40 @@ back. The lines around it stay commented until you put them back too.
 An untouched comment writes back exactly as it was read, blank lines and
 all. That includes spaces at the end of a line: a line ending in a hard line
 break (two trailing spaces) keeps them while commented out, and gets its
-break back when it is put back.
+break back when it is put back. Lines a hard break joins go back together:
+putting back either one brings the other with it, since a line on its own
+cannot keep a break at its end.
+
+**A divider** (or a page break) has no line to put the cursor in: select it
+with the arrow keys — move onto it from the line above or below — then press
+**Ctrl+/**. It becomes a comment line reading `---` (or `***`), and comes back
+as a divider the same way as any other line.
 
 `50% of a page` is not a comment — only a `%` at the very start of a line
 counts, matching MyST's own rule.
+
+**In a glossary.** Comment out any line of a definition — its first line
+included — and only that line goes; the term keeps its entry. Comment out a
+term and its whole entry goes with it. Every entry of a glossary can be
+commented out this way: Sphinx builds the glossary, empty, without
+complaint.
+
+In the source, a commented-out *entry* is not written with `%` but with `..`:
+
+```markdown
+:::{glossary}
+.. Detection field size error
+..    The error in *detection field* size.
+:::
+```
+
+This is not a MyST comment — MyST's own documentation only knows `%`. A
+`{glossary}` is the exception: Sphinx reads its lines itself, the
+reStructuredText way, before MyST sees any of them, and at that level a
+`% Term` line is published as a glossary term, `%` and all, while `..` is the
+one comment it skips. A commented line *inside* a definition keeps its `%`,
+indented with the definition: that part goes through MyST again, where `%`
+works.
 
 ### Maths
 

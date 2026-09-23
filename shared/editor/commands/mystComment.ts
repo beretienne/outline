@@ -5,7 +5,7 @@ import type {
   ResolvedPos,
 } from "prosemirror-model";
 import type { EditorState, Transaction } from "prosemirror-state";
-import { TextSelection } from "prosemirror-state";
+import { NodeSelection, TextSelection } from "prosemirror-state";
 import type { MarkdownSerializer } from "../lib/markdown/serializer";
 import { DIRECTIVE_INFO } from "../nodes/CodeFence";
 
@@ -58,53 +58,59 @@ function countDirectiveFallbacks(node: ProsemirrorNode): number {
 }
 
 /**
- * The absolute range covered by top-level nodes `fromIndex` to `toIndex`,
- * both included.
+ * The range covered by children `fromIndex` to `toIndex` of `container`,
+ * both included, relative to the start of its content.
  *
- * @param doc - the document.
- * @param fromIndex - index of the first top-level node.
- * @param toIndex - index of the last top-level node.
+ * @param container - the node whose children these are.
+ * @param fromIndex - index of the first child.
+ * @param toIndex - index of the last child.
  * @returns the range.
  */
-function topLevelRange(
-  doc: ProsemirrorNode,
+function childRange(
+  container: ProsemirrorNode,
   fromIndex: number,
   toIndex: number
 ): { from: number; to: number } {
   let from = 0;
   for (let index = 0; index < fromIndex; index++) {
-    from += doc.child(index).nodeSize;
+    from += container.child(index).nodeSize;
   }
   let to = from;
   for (let index = fromIndex; index <= toIndex; index++) {
-    to += doc.child(index).nodeSize;
+    to += container.child(index).nodeSize;
   }
   return { from, to };
 }
 
 /**
- * Serialize top-level nodes `fromIndex`–`toIndex` of `markedDoc`, let
- * `edit` change the Markdown, parse the result, and replace the same nodes
- * of `state.doc` with it.
+ * Serialize children `fromIndex`–`toIndex` of a container in `markedDoc`
+ * — the document itself, or a glossary definition — as a document of their
+ * own, let `edit` change that Markdown, parse the result, and replace the
+ * same children of the container in `state.doc` with it.
  *
  * This is how a comment is taken out or put in: as an edit to the
  * Markdown itself — removing or adding `%` — so the result is exactly what
  * the same edit to the source file gives. A line's indentation decides
  * whether it nests in the list before it, a glossary entry is only an entry
  * inside its `{glossary}`: re-reading the Markdown gets all of that right
- * without any of it being modelled here.
+ * without any of it being modelled here. A glossary definition is read by
+ * Sphinx as MyST of its own, so inside one it is the document: its lines
+ * are commented where they stand, without its indentation.
  *
  * The cursor goes where `edit` left a `CARET` character, if anywhere.
  *
  * Refuses (returns undefined) rather than degrade anything: when the edit
  * leaves a directive whose body no longer parses — it would fall back to an
- * inert code block — or when the result is empty.
+ * inert code block — when the result is empty, or when it holds something
+ * the container cannot.
  *
  * @param state - the editor state to change.
- * @param markedDoc - `state.doc` with marker characters added; its
- * top-level node count and order are the same.
- * @param fromIndex - index of the first top-level node of the region.
- * @param toIndex - index of the last top-level node of the region.
+ * @param markedDoc - `state.doc` with marker characters added inside
+ * textblocks only; its node structure is the same.
+ * @param containerStart - where the container's content starts: 0 for the
+ * document itself.
+ * @param fromIndex - index of the container's first child in the region.
+ * @param toIndex - index of the container's last child in the region.
  * @param roundTrip - the editor's parser and serializer.
  * @param edit - rewrites the region's Markdown; undefined to give up.
  * @returns the transaction, or undefined.
@@ -112,15 +118,17 @@ function topLevelRange(
 function rewriteRegion(
   state: EditorState,
   markedDoc: ProsemirrorNode,
+  containerStart: number,
   fromIndex: number,
   toIndex: number,
   roundTrip: MarkdownRoundTrip,
   edit: (markdown: string) => string | undefined
 ): Transaction | undefined {
-  const marked = topLevelRange(markedDoc, fromIndex, toIndex);
+  const markedContainer = markedDoc.resolve(containerStart).parent;
+  const marked = childRange(markedContainer, fromIndex, toIndex);
   const region = markedDoc.type.create(
     null,
-    markedDoc.content.cut(marked.from, marked.to)
+    markedContainer.content.cut(marked.from, marked.to)
   );
   const markdown = edit(
     roundTrip.serializer.serialize(region, { commonMark: true })
@@ -134,31 +142,36 @@ function rewriteRegion(
     return undefined;
   }
 
-  const original = topLevelRange(state.doc, fromIndex, toIndex);
+  const container = state.doc.resolve(containerStart).parent;
+  const original = childRange(container, fromIndex, toIndex);
   const before = state.doc.type.create(
     null,
-    state.doc.content.cut(original.from, original.to)
+    container.content.cut(original.from, original.to)
   );
   if (countDirectiveFallbacks(parsed) > countDirectiveFallbacks(before)) {
     return undefined;
   }
+  if (!container.canReplace(fromIndex, toIndex + 1, parsed.content)) {
+    return undefined;
+  }
 
-  const tr = state.tr.replaceWith(original.from, original.to, parsed.content);
-  let caret: number | undefined;
-  tr.doc.nodesBetween(
-    original.from,
-    original.from + parsed.content.size,
-    (node, pos) => {
-      if (caret === undefined && node.isText && node.text?.includes(CARET)) {
-        caret = pos + node.text.indexOf(CARET);
-      }
-      return caret === undefined;
-    }
+  const from = containerStart + original.from;
+  const tr = state.tr.replaceWith(
+    from,
+    containerStart + original.to,
+    parsed.content
   );
+  let caret: number | undefined;
+  tr.doc.nodesBetween(from, from + parsed.content.size, (node, pos) => {
+    if (caret === undefined && node.isText && node.text?.includes(CARET)) {
+      caret = pos + node.text.indexOf(CARET);
+    }
+    return caret === undefined;
+  });
   if (caret !== undefined) {
     tr.delete(caret, caret + CARET.length);
   }
-  tr.setSelection(TextSelection.near(tr.doc.resolve(caret ?? original.from)));
+  tr.setSelection(TextSelection.near(tr.doc.resolve(caret ?? from)));
   return tr.scrollIntoView();
 }
 
@@ -202,7 +215,7 @@ function widenOverComments(
  * @param node - the node.
  * @returns true for a glossary.
  */
-function isGlossary(node: ProsemirrorNode): boolean {
+export function isGlossary(node: ProsemirrorNode): boolean {
   return (
     node.type.name === "container_directive" &&
     node.attrs.directive === "glossary"
@@ -210,20 +223,15 @@ function isGlossary(node: ProsemirrorNode): boolean {
 }
 
 /**
- * The term of the glossary entry `$pos` is in, when commenting from `$pos`
- * has to take that whole entry: a term with no definition under it, or a
- * definition with no term above it, is not a glossary entry any more, and
- * the glossary would stop being one.
+ * The term of the glossary entry `$pos` is in — its term or any part of its
+ * definition — for a comment that has to take that whole entry: a
+ * definition with no term above it is not a glossary entry any more.
  *
  * @param $pos - a position in a textblock.
- * @param headOnly - only when `$pos` is in the term itself or in the first
- * block of its definition (a later paragraph of a definition can go on its
- * own).
  * @returns the term's position (before it) and node, or undefined.
  */
 function entryTermAt(
-  $pos: ResolvedPos,
-  headOnly: boolean
+  $pos: ResolvedPos
 ): { pos: number; node: ProsemirrorNode } | undefined {
   for (let depth = $pos.depth; depth > 0; depth--) {
     const node = $pos.node(depth);
@@ -231,11 +239,28 @@ function entryTermAt(
       return { pos: $pos.before(depth), node };
     }
     if (node.type.name === "definition_body") {
-      if (headOnly && $pos.index(depth) !== 0) {
-        return undefined;
-      }
       const term = $pos.node(depth - 1).child($pos.index(depth - 1) - 1);
       return { pos: $pos.before(depth) - term.nodeSize, node: term };
+    }
+  }
+  return undefined;
+}
+
+/**
+ * The glossary definition holding both ends of a selection, when there is
+ * one: the depth of the innermost `definition_body` they share.
+ *
+ * @param $from - the selection's start.
+ * @param $to - the selection's end.
+ * @returns that depth, or undefined.
+ */
+function sharedDefinitionDepth(
+  $from: ResolvedPos,
+  $to: ResolvedPos
+): number | undefined {
+  for (let depth = $from.sharedDepth($to.pos); depth > 0; depth--) {
+    if ($from.node(depth).type.name === "definition_body") {
+      return depth;
     }
   }
   return undefined;
@@ -291,6 +316,71 @@ function widenGlossaryEntries(
 }
 
 /**
+ * Widen a set of comment lines over the hard breaks that joined them: a
+ * line ending in one — two trailing spaces, or a backslash — comes back
+ * with the line after it, and a line after one with the line before it,
+ * however long the chain.
+ *
+ * Needed because a line put back on its own becomes a paragraph of its own,
+ * and a paragraph cannot end in a hard break (it is dropped): the rest of
+ * it, put back later, would come back as another paragraph, the break lost.
+ * In a source file the two lines stay adjacent and nothing is lost; here
+ * the lines a break joined go together instead. Every other line stays
+ * independent, one at a time — a wrapped sentence included, since putting
+ * it back without the line after it loses nothing but the join.
+ *
+ * Only among comment lines written directly one after the other (`tight`).
+ * A glossary's entry-level comments are whole entries already
+ * (`widenGlossaryEntries`).
+ *
+ * @param doc - the document.
+ * @param type - the `myst_comment` node type.
+ * @param targets - the comment lines, by position.
+ * @returns the widened set, in document order.
+ */
+function widenOverHardBreaks(
+  doc: ProsemirrorNode,
+  type: NodeType,
+  targets: { pos: number; node: ProsemirrorNode }[]
+): { pos: number; node: ProsemirrorNode }[] {
+  const breaks = (node: ProsemirrorNode) =>
+    /( {2,}|\\)$/.test(node.textContent);
+  const byPos = new Map(targets.map((target) => [target.pos, target]));
+
+  for (const target of targets) {
+    const $pos = doc.resolve(target.pos);
+    const parent = $pos.parent;
+    if (isGlossary(parent)) {
+      continue;
+    }
+    const joined = (index: number) =>
+      index + 1 < parent.childCount &&
+      parent.child(index).type === type &&
+      parent.child(index + 1).type === type &&
+      parent.child(index + 1).attrs.tight &&
+      breaks(parent.child(index));
+
+    let first = $pos.index();
+    while (first > 0 && joined(first - 1)) {
+      first--;
+    }
+    let last = $pos.index();
+    while (joined(last)) {
+      last++;
+    }
+
+    parent.forEach((child, offset, index) => {
+      if (index >= first && index <= last) {
+        const pos = $pos.start() + offset;
+        byPos.set(pos, { pos, node: child });
+      }
+    });
+  }
+
+  return [...byPos.values()].sort((a, b) => a.pos - b.pos);
+}
+
+/**
  * Take the comment out of every `myst_comment` line the selection touches:
  * each comes back exactly as the source line it was before `%` was put in
  * front of it — a list item at its own indentation, a glossary entry inside
@@ -319,7 +409,11 @@ export function uncommentSelection(
   if (targets.length === 0) {
     return undefined;
   }
-  const commentLines = widenGlossaryEntries(state.doc, type, targets);
+  const commentLines = widenGlossaryEntries(
+    state.doc,
+    type,
+    widenOverHardBreaks(state.doc, type, targets)
+  );
 
   // Put the marker at the start of each of their lines. Last first, so the
   // earlier positions stay valid.
@@ -347,13 +441,14 @@ export function uncommentSelection(
     )
   );
 
-  // `%`, the marker's own space when the line was written `% text`, and the
+  // The marker — `%` and its own space when the line was written `% text`,
+  // or the `.. ` a commented-out glossary entry is written with — and the
   // character added above: what is left is the line as it was.
   // The cursor goes at the end of the first restored line: anywhere
   // before its content, it could land inside a list marker or indentation
   // and change what the line is. It goes before any trailing spaces, which
   // may be a hard break and only are one at the very end of the line.
-  const pattern = new RegExp(`% ?${UNCOMMENT}`, "g");
+  const pattern = new RegExp(`(?:% ?|\\.\\. )${UNCOMMENT}`, "g");
   const restore = (markdown: string, withCaret: boolean) => {
     if (!markdown.includes(UNCOMMENT)) {
       return undefined;
@@ -369,16 +464,81 @@ export function uncommentSelection(
       })
       .join("\n");
   };
-  // A caret after a fence line (```, :::) would change the fence; when that
-  // degrades the region, restore without it.
-  return (
-    rewriteRegion(state, markTr.doc, fromIndex, toIndex, roundTrip, (md) =>
-      restore(md, true)
-    ) ??
-    rewriteRegion(state, markTr.doc, fromIndex, toIndex, roundTrip, (md) =>
-      restore(md, false)
-    )
+  // A caret at the end of a line whose meaning is the whole line — a
+  // divider (`---` then anything is text), a fence line — changes what it
+  // reads as. The caret character itself is gone from either result, so
+  // when both read the same it changed nothing; otherwise the line is put
+  // back without it.
+  const withCaret = rewriteRegion(
+    state,
+    markTr.doc,
+    0,
+    fromIndex,
+    toIndex,
+    roundTrip,
+    (md) => restore(md, true)
   );
+  const withoutCaret = rewriteRegion(
+    state,
+    markTr.doc,
+    0,
+    fromIndex,
+    toIndex,
+    roundTrip,
+    (md) => restore(md, false)
+  );
+  if (withCaret && withoutCaret && !withCaret.doc.eq(withoutCaret.doc)) {
+    return withoutCaret;
+  }
+  return withCaret ?? withoutCaret;
+}
+
+/**
+ * Put `% ` in front of every line from the one holding `RANGE_START` to
+ * the one holding `RANGE_END` — or, when an `ENTRY` mark is present, to
+ * the end of that glossary entry — and remove the marks.
+ *
+ * @param markdown - the region's Markdown, marks included.
+ * @returns the commented-out Markdown, or undefined when the marks are
+ * missing.
+ */
+function prefixMarkedLines(markdown: string): string | undefined {
+  const lines = markdown.split("\n");
+  const start = lines.findIndex((line) => line.includes(RANGE_START));
+  let end = lines.findIndex((line) => line.includes(RANGE_END));
+  if (start === -1 || end === -1 || end < start) {
+    return undefined;
+  }
+  // A whole entry runs from its term's line through every line indented
+  // deeper than it — its definition, as the glossary reads it.
+  const entry = lines.findIndex((line) => line.includes(ENTRY));
+  if (entry !== -1) {
+    const indentOf = (line: string) => /^\s*/.exec(line)?.[0].length ?? 0;
+    const termIndent = indentOf(lines[entry]);
+    let next = Math.max(end, entry) + 1;
+    while (
+      next < lines.length &&
+      (lines[next].trim() === "" || indentOf(lines[next]) > termIndent)
+    ) {
+      next++;
+    }
+    end = next - 1;
+    while (end > start && lines[end].trim() === "") {
+      end--;
+    }
+  }
+  return lines
+    .map((line, index) => {
+      const clean = line
+        .replace(RANGE_START, "")
+        .replace(RANGE_END, "")
+        .replace(ENTRY, "");
+      if (index < start || index > end || clean.trim() === "") {
+        return clean;
+      }
+      return index === start ? `% ${CARET}${clean}` : `% ${clean}`;
+    })
+    .join("\n");
 }
 
 /**
@@ -387,6 +547,14 @@ export function uncommentSelection(
  * of them in a source file. A list item comes out of its list as a comment
  * line (the list continues around it), and its bold, italics and links stay
  * in the comment as their Markdown, ready to come back with it.
+ *
+ * In a glossary, a selection inside one definition comments out those
+ * lines of it and nothing else — the first line as much as any other: the
+ * definition is its own MyST document to Sphinx, so the comment stays in it,
+ * at its indentation. A selection reaching a term — or from one entry into
+ * another — takes the whole of every entry it touches, written with `..`
+ * (see `MystComment.toMarkdown`). Any number of a glossary's entries can go
+ * that way, all of them included: Sphinx builds an empty glossary.
  *
  * @param state - the editor state.
  * @param type - the `myst_comment` node type.
@@ -400,6 +568,37 @@ export function commentOutSelection(
   type: NodeType,
   roundTrip: MarkdownRoundTrip
 ): Transaction | undefined {
+  // A block with no text to put a cursor in — a divider — is selected
+  // whole, by clicking it: its own lines are the ones to comment out.
+  const { selection } = state;
+  if (
+    selection instanceof NodeSelection &&
+    selection.node.isBlock &&
+    selection.node.isLeaf
+  ) {
+    const $node = selection.$from;
+    if (isGlossary($node.parent)) {
+      return undefined;
+    }
+    for (let depth = 1; depth <= $node.depth; depth++) {
+      if ($node.node(depth).type.spec.tableRole) {
+        return undefined;
+      }
+    }
+    return rewriteRegion(
+      state,
+      state.doc,
+      $node.start(),
+      $node.index(),
+      $node.index(),
+      roundTrip,
+      (markdown) =>
+        prefixMarkedLines(
+          `${RANGE_START}${markdown.replace(/\s+$/, "")}${RANGE_END}`
+        )
+    );
+  }
+
   const { $from, $to } = state.selection;
   const first = $from.parent;
   const last = $to.parent;
@@ -418,11 +617,13 @@ export function commentOutSelection(
     }
   }
 
-  // In a glossary, a term — or the first line of its definition — is
-  // commented out together with its whole entry.
-  const startTerm = entryTermAt($from, true);
+  // Within one definition, it is the region; otherwise the top-level nodes
+  // the selection spans, whole glossary entries included.
+  const definitionDepth = sharedDefinitionDepth($from, $to);
+  const startTerm =
+    definitionDepth === undefined ? entryTermAt($from) : undefined;
   const startPos = startTerm ? startTerm.pos + 1 : $from.start();
-  const endTerm = entryTermAt($to, false);
+  const endTerm = definitionDepth === undefined ? entryTermAt($to) : undefined;
   const wholeEntryAtEnd = endTerm !== undefined && endTerm.pos + 1 >= startPos;
 
   const $start = state.doc.resolve(startPos);
@@ -444,10 +645,8 @@ export function commentOutSelection(
     });
   }
 
-  // Mark where the selected lines start and end. End first, so the start
-  // position stays valid.
-  // Marks go in from the last position to the first, so the earlier
-  // positions stay valid.
+  // Mark where the selected lines start and end. Marks go in from the last
+  // position to the first, so the earlier positions stay valid.
   const marks: [number, string][] = [
     [$to.end(), RANGE_END],
     [startPos, RANGE_START],
@@ -460,49 +659,24 @@ export function commentOutSelection(
     .sort((a, b) => b[0] - a[0])
     .forEach(([pos, mark]) => markTr.insertText(mark, pos));
 
+  if (definitionDepth !== undefined) {
+    return rewriteRegion(
+      state,
+      markTr.doc,
+      $from.start(definitionDepth),
+      $from.index(definitionDepth),
+      $to.index(definitionDepth),
+      roundTrip,
+      prefixMarkedLines
+    );
+  }
   return rewriteRegion(
     state,
     markTr.doc,
+    0,
     $start.index(0),
     $to.index(0),
     roundTrip,
-    (markdown) => {
-      const lines = markdown.split("\n");
-      const start = lines.findIndex((line) => line.includes(RANGE_START));
-      let end = lines.findIndex((line) => line.includes(RANGE_END));
-      if (start === -1 || end === -1 || end < start) {
-        return undefined;
-      }
-      // A whole entry runs from its term's line through every line indented
-      // deeper than it — its definition, as the glossary reads it.
-      const entry = lines.findIndex((line) => line.includes(ENTRY));
-      if (entry !== -1) {
-        const indentOf = (line: string) => /^\s*/.exec(line)?.[0].length ?? 0;
-        const termIndent = indentOf(lines[entry]);
-        let next = Math.max(end, entry) + 1;
-        while (
-          next < lines.length &&
-          (lines[next].trim() === "" || indentOf(lines[next]) > termIndent)
-        ) {
-          next++;
-        }
-        end = next - 1;
-        while (end > start && lines[end].trim() === "") {
-          end--;
-        }
-      }
-      return lines
-        .map((line, index) => {
-          const clean = line
-            .replace(RANGE_START, "")
-            .replace(RANGE_END, "")
-            .replace(ENTRY, "");
-          if (index < start || index > end || clean.trim() === "") {
-            return clean;
-          }
-          return index === start ? `% ${CARET}${clean}` : `% ${clean}`;
-        })
-        .join("\n");
-    }
+    prefixMarkedLines
   );
 }

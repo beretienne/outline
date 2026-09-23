@@ -1452,14 +1452,23 @@ describe("% comments become myst_comment nodes", () => {
     expect(roundTrip(source)).toBe("% c\n\n* item");
   });
 
-  test("a % run between two glossary entries splits the definition list", () => {
+  /**
+   * Sphinx's `{glossary}` reads its own body line by line, the reST way,
+   * before any of it reaches MyST: at column 0 there, `% Term` is published
+   * as a literal term, and `.. ` is the one comment it skips (whole entry,
+   * definition lines included). Checked against Sphinx 8.2 and MyST-Parser
+   * 5.1. So a commented-out entry is written `..`, and one written with `%`
+   * — only ever by an earlier version of this editor, the real trees hold
+   * none — opens as a comment and is written back with `..`.
+   */
+  test("a commented-out entry between two others splits the definition list", () => {
     const source = [
       ":::{glossary}",
       "Term one",
       "   Definition one.",
       "",
-      "% Term two (commented)",
-      "%   Definition two.",
+      ".. Term two (commented)",
+      "..   Definition two.",
       "",
       "Term three",
       "   Definition three.",
@@ -1492,12 +1501,21 @@ describe("% comments become myst_comment nodes", () => {
     // Trailing-blank-line normalization again, before the directive's own
     // closing fence.
     expect(roundTrip(source)).toBe(source.replace(/\n:::$/, "\n\n:::"));
+    // The same entry written with `%` reads the same, and is written `..`.
+    expect(roundTrip(source.replace(/^\.\. /gm, "%"))).toBe(roundTrip(source));
   });
 
-  test("a comment-only glossary body declines, same as any other malformed body", () => {
-    const source = ":::{glossary}\n% just a comment\n:::";
-    expect(roundTrip(source)).toBe(source);
-    expect(mystComments(source)).toEqual([]);
+  test("a glossary with every entry commented out is still a glossary", () => {
+    // Sphinx builds it, empty, without a warning.
+    const source = ":::{glossary}\n.. Only term\n..    Its definition.\n:::";
+    expect(topLevel(source)).toEqual(["container_directive"]);
+    expect(mystComments(source)).toEqual(["Only term", "   Its definition."]);
+    expect(roundTrip(source)).toBe(source.replace(/\n:::$/, "\n\n:::"));
+  });
+
+  test("a glossary with nothing in it at all stays an opaque fence", () => {
+    const source = ":::{glossary}\n:::";
+    expect(topLevel(source)).toEqual(["code_block"]);
   });
 
   /**

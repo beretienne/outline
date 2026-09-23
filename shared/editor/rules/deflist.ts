@@ -29,10 +29,10 @@ type DeflistEntry =
     }
   | {
       kind: "comment";
-      /** A run of `%` comment lines sitting between two entries, each with
-       * its own leading `%` already stripped (matching the `myst_comment`
-       * rule's own token content shape) — see `parseEntries`'s own comment
-       * for why these get their own entry kind rather than being declined. */
+      /** A run of column-0 comment lines — commented-out entries — each
+       * with its marker already stripped (matching the `myst_comment` rule's
+       * own token content shape) — see `parseEntries`'s own comment for why
+       * these get their own entry kind rather than being declined. */
       lines: string[];
     };
 
@@ -54,18 +54,18 @@ type DeflistEntry =
  * `unclaimedColonFence` (`notices.ts`) already uses for a fence's own body,
  * and markdown-it's native `list` rule uses for a list item's own content.
  *
- * A column-0 `%` comment run between two entries — real content in the
- * QCAM5 install manual's own glossary, whole entries commented out — is its
- * own entry kind rather than being declined outright (what a `%` line used
- * to do here: it passed `OTHER_BLOCK_STARTER`, was taken as a term, then
- * failed the "next line must be indented" check) or being folded into a
- * definition's own body (Sphinx itself splits the `<dl>` at a comment
- * between entries; see `tryBuildDefinitionList`, which does the same).
+ * A column-0 comment run — whole entries commented out, written `.. ` (see
+ * `entryCommentMarker`) — is its own entry kind rather than being declined
+ * outright (what a `%` line used to do here: it passed
+ * `OTHER_BLOCK_STARTER`, was taken as a term, then failed the "next line
+ * must be indented" check) or being folded into a definition's own body
+ * (Sphinx itself splits the `<dl>` at a comment between entries; see
+ * `tryBuildDefinitionList`, which does the same). A comment on a line of a
+ * definition sits indented, inside that definition, and is its business.
  *
  * @param body - the fence's raw, unindented body text.
- * @returns the parsed entries, or undefined if the body is not cleanly a
- * sequence of them (or holds no real term entry at all — a comment-only
- * body is not a definition list).
+ * @returns the parsed entries — possibly all of them comments — or
+ * undefined if the body is not cleanly a sequence of them, or is empty.
  */
 function parseEntries(body: string): DeflistEntry[] | undefined {
   const lines = body.split("\n");
@@ -81,7 +81,8 @@ function parseEntries(body: string): DeflistEntry[] | undefined {
     // non-blank line (it consumes trailing blanks itself, as part of
     // scanning how far the body extends) — but the comment branch just
     // below does not have an equivalent scan, since a comment run stops at
-    // the first non-`%` line, blank or not. Skipping blank lines here once
+    // the first line not carrying its marker, blank or not. Skipping blank
+    // lines here once
     // per iteration keeps both branches landing on the same footing before
     // deciding what the next entry is.
     while (i < lines.length && lines[i].trim() === "") {
@@ -91,11 +92,15 @@ function parseEntries(body: string): DeflistEntry[] | undefined {
       break;
     }
 
-    if (lines[i].startsWith("%")) {
-      const commentLines = [lines[i].slice(1)];
-      i++;
-      while (i < lines.length && lines[i].startsWith("%")) {
-        commentLines.push(lines[i].slice(1));
+    const marker = entryCommentMarker(lines[i]);
+    if (marker) {
+      const commentLines: string[] = [];
+      while (i < lines.length && entryCommentMarker(lines[i]) === marker) {
+        // A `.. ` line is handed on the way a `% text` line is — its text
+        // after one space — so both read into the same node shape.
+        commentLines.push(
+          marker === "%" ? lines[i].slice(1) : ` ${lines[i].slice(3)}`
+        );
         i++;
       }
       entries.push({ kind: "comment", lines: commentLines });
@@ -153,7 +158,33 @@ function parseEntries(body: string): DeflistEntry[] | undefined {
     entries.push({ kind: "term", term, bodyLines });
   }
 
-  return entries.some((entry) => entry.kind === "term") ? entries : undefined;
+  // Every entry commented out is still a glossary: Sphinx builds it without
+  // a warning, as an empty one. A body with nothing in it at all is left to
+  // the opaque fence, as before.
+  return entries.length > 0 ? entries : undefined;
+}
+
+/**
+ * Which comment marker a glossary body line starts with at column 0 — the
+ * entry level, where Sphinx's own glossary parser reads it.
+ *
+ * `.. ` is the form Sphinx skips there, together with the definition lines
+ * under it. `%` is not a comment at that level in Sphinx (it is published as
+ * a term), but is still read as one, so a glossary written that way — by an
+ * earlier version of the editor — opens as what was meant and is written
+ * back with `..`.
+ *
+ * @param line - a line of the fence's body.
+ * @returns the marker, or undefined for any other line.
+ */
+function entryCommentMarker(line: string): "%" | ".." | undefined {
+  if (line.startsWith("%")) {
+    return "%";
+  }
+  if (line.startsWith(".. ")) {
+    return "..";
+  }
+  return undefined;
 }
 
 /**
@@ -236,7 +267,7 @@ function buildDefinitionBodyTokens(
  * the byte-exact opaque `CodeFence` every other unclaimed directive falls
  * back to too.
  *
- * A `%` comment run between two entries splits the `definition_list` in
+ * A commented-out entry between two others splits the `definition_list` in
  * two around a `myst_comment` node, sitting as its sibling — what Sphinx
  * itself does to the `<dl>` — rather than teaching `definition_list` to
  * hold a comment as one of its own children (which would touch its own

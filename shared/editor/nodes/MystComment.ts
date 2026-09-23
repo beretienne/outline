@@ -7,6 +7,7 @@ import { Node as ProsemirrorNode } from "prosemirror-model";
 import type { Command, EditorState, Transaction } from "prosemirror-state";
 import {
   commentOutSelection,
+  isGlossary,
   type MarkdownRoundTrip,
   uncommentSelection,
 } from "../commands/mystComment";
@@ -171,7 +172,11 @@ export default class MystComment extends Node {
     };
   }
 
-  toMarkdown(state: MarkdownSerializerState, node: ProsemirrorNode) {
+  toMarkdown(
+    state: MarkdownSerializerState,
+    node: ProsemirrorNode,
+    parent?: ProsemirrorNode
+  ) {
     // A line that directly followed another comment line in the source is
     // written back that way, without the blank line every other pair of
     // blocks gets — `renderList`'s own tight-list technique.
@@ -184,13 +189,26 @@ export default class MystComment extends Node {
       state.flushClose(1);
     }
     state.ensureNewLine();
-    const indent = " ".repeat(Math.max(0, Math.min(3, node.attrs.indent)));
-    const marker = node.attrs.spaced ? "% " : "%";
-    const lines = node.textContent
-      .split("\n")
-      .map((line) =>
-        line === "" ? `${indent}%` : `${indent}${marker}${line}`
-      );
+
+    // Directly inside a `{glossary}` — a whole entry commented out — `%`
+    // is not a comment: Sphinx's glossary reads its own body line by line
+    // and publishes a column-0 `% Term` as a literal term. The one form it
+    // skips there is `.. `, which also has to start the line, and a bare
+    // `..` (no text after it) would itself become a term, so an empty line
+    // stays empty. Inside a definition, a comment is MyST's again: that
+    // content goes through MyST, where `%` is hidden.
+    const lines =
+      parent && isGlossary(parent)
+        ? node.textContent
+            .split("\n")
+            .map((line) => (line === "" ? "" : `.. ${line}`))
+        : node.textContent.split("\n").map((line) => {
+            const indent = " ".repeat(
+              Math.max(0, Math.min(3, node.attrs.indent))
+            );
+            const marker = node.attrs.spaced ? "% " : "%";
+            return line === "" ? `${indent}%` : `${indent}${marker}${line}`;
+          });
     state.text(lines.join("\n"), false);
     state.closeBlock(node);
   }

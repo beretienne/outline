@@ -1,6 +1,6 @@
 import { inputRules } from "prosemirror-inputrules";
 import type { Node as ProsemirrorNode } from "prosemirror-model";
-import { EditorState, TextSelection } from "prosemirror-state";
+import { EditorState, NodeSelection, TextSelection } from "prosemirror-state";
 import type { Editor } from "../../../app/editor";
 import {
   createEditorState,
@@ -353,15 +353,75 @@ describe("MystComment comment out (Mod-/, the Comment menu entry)", () => {
       expect(terms(doc)).toEqual(["Term one", "Term three"]);
     });
 
-    it("so does the first line of its definition", () => {
-      const { doc } = press("Mod-/", glossary, ["Definition two."]);
-      expect(terms(doc)).toEqual(["Term one", "Term three"]);
+    it("writes a commented-out entry with .., the comment Sphinx's glossary reads", () => {
+      const { doc } = press("Mod-/", glossary, ["Term two"]);
+      expect(markdown(doc)).toContain(
+        "\n\n.. Term two\n..    Definition two.\n\n..    Second paragraph of two.\n\n"
+      );
+    });
+
+    // A definition is MyST of its own to Sphinx: a comment in it stays in
+    // it, at its indentation, and the term keeps its entry.
+    it("the first line of a definition comments out on its own", () => {
+      const { applied, doc } = press("Mod-/", glossary, ["Definition two."]);
+      expect(applied).toBe(true);
+      expect(terms(doc)).toEqual(["Term one", "Term two", "Term three"]);
+      expect(children(doc)).toEqual(["definition_list"]);
+      expect(markdown(doc)).toContain(
+        "Term two\n   % Definition two.\n\n   Second paragraph of two."
+      );
     });
 
     it("a later paragraph of a definition comments out on its own", () => {
       const { doc } = press("Mod-/", glossary, ["Second paragraph"]);
       expect(terms(doc)).toEqual(["Term one", "Term two", "Term three"]);
-      expect(children(doc)).toContain("%    Second paragraph of two.");
+      expect(children(doc)).toEqual(["definition_list"]);
+      expect(markdown(doc)).toContain(
+        "   Definition two.\n\n   % Second paragraph of two."
+      );
+    });
+
+    it("a glossary's only entry comments out, leaving it empty", () => {
+      const single = ":::{glossary}\nOnly term\n   Its definition.\n:::";
+      const commented = press("Mod-/", single, ["Only term"]);
+      expect(commented.applied).toBe(true);
+      expect(types(commented.doc)).toEqual(["container_directive"]);
+      expect(terms(commented.doc)).toEqual([]);
+      expect(children(commented.doc)).toEqual([
+        "% Only term",
+        "%    Its definition.",
+      ]);
+
+      const restored = press("Mod-/", markdown(commented.doc), ["Only term"]);
+      expect(restored.applied).toBe(true);
+      expect(markdown(restored.doc)).toBe(markdown(parser.parse(single)!));
+    });
+
+    describe("a list in a definition", () => {
+      const entry = [
+        ":::{glossary}",
+        "Size error",
+        "   The error in size, including:",
+        "",
+        "   - Measurement error",
+        "   - Configuration error",
+        ":::",
+      ].join("\n");
+
+      it.each([
+        ["The error in size", "   % The error in size, including:"],
+        ["Measurement error", "   % - Measurement error"],
+        ["Configuration error", "   % - Configuration error"],
+      ])("comments out %s alone, and back", (line, written) => {
+        const commented = press("Mod-/", entry, [line]);
+        expect(commented.applied).toBe(true);
+        expect(terms(commented.doc)).toEqual(["Size error"]);
+        expect(markdown(commented.doc)).toContain(`\n${written}\n`);
+
+        const restored = press("Mod-/", markdown(commented.doc), [line]);
+        expect(restored.applied).toBe(true);
+        expect(markdown(restored.doc)).toBe(markdown(parser.parse(entry)!));
+      });
     });
 
     it("commented out and back gives the same glossary", () => {
@@ -465,6 +525,90 @@ describe("MystComment comment out (Mod-/, the Comment menu entry)", () => {
     const source = "Before.\n\n:::{ifconfig} Class == 'A'\nInside.\n:::";
     const { applied } = press("Mod-/", source, ["Before."], ["Inside."]);
     expect(applied).toBe(false);
+  });
+});
+
+describe("MystComment and hard breaks", () => {
+  // A paragraph cannot end in a hard break: a line put back on its own,
+  // before the line its break joined it to, would lose it for good.
+  it.each([
+    [
+      "a paragraph",
+      "Line one.  \nLine two.\n\nAfter.",
+      ["Line one", "Line two"],
+    ],
+    [
+      "a list item",
+      "- Item one.  \n  Its second line.\n- Item two.",
+      ["Item one", "second line"],
+    ],
+    [
+      "a glossary definition",
+      ":::{glossary}\nTerm\n   Line one.  \n   Line two.\n:::",
+      ["Line one", "Line two"],
+    ],
+    [
+      "a backslash break",
+      "Line one.\\\nLine two.\n\nAfter.",
+      ["Line one", "Line two"],
+    ],
+  ])(
+    "putting back either line of %s brings the other, break included",
+    (_name, source, lines) => {
+      const original = markdown(parser.parse(source)!);
+      const commented = markdown(press("Mod-/", source, [lines[0], 1]).doc);
+      for (const line of lines) {
+        const restored = press("Mod-/", commented, [line]);
+        expect(restored.applied).toBe(true);
+        expect(markdown(restored.doc)).toBe(original);
+      }
+    }
+  );
+
+  it("still puts back lines no break joins one at a time", () => {
+    const { doc } = press("Backspace", "% one\n% two  \n% three", ["one"]);
+    expect(types(doc)).toEqual(["paragraph", "myst_comment", "myst_comment"]);
+  });
+});
+
+describe("MystComment and dividers", () => {
+  /** Select the `n`th divider of `source` and press Mod-/. */
+  function commentDivider(source: string) {
+    const doc = parser.parse(source)!;
+    let pos: number | undefined;
+    doc.descendants((node, p) => {
+      if (pos === undefined && node.type.name === "hr") {
+        pos = p;
+      }
+      return pos === undefined;
+    });
+    let state = createEditorState(doc);
+    state = state.apply(
+      state.tr.setSelection(NodeSelection.create(state.doc, pos!))
+    );
+    const applied = keys()["Mod-/"](state, (tr) => {
+      state = state.apply(tr);
+    });
+    return { applied, doc: state.doc };
+  }
+
+  it.each([
+    ["---", "Before.\n\n---\n\nAfter."],
+    ["*** (Outline's page break)", "Before.\n\n***\n\nAfter."],
+    [
+      "--- in a glossary definition",
+      ":::{glossary}\nTerm\n   Before.\n\n   ---\n\n   After.\n:::",
+    ],
+  ])("comments out a selected %s, and puts it back", (_name, source) => {
+    const commented = commentDivider(source);
+    expect(commented.applied).toBe(true);
+    const written = markdown(commented.doc);
+    expect(written).toMatch(/^ *% (---|\*\*\*)$/m);
+
+    const marker = /% (---|\*\*\*)/.exec(written)![1];
+    const restored = press("Backspace", written, [marker]);
+    expect(restored.applied).toBe(true);
+    expect(markdown(restored.doc)).toBe(markdown(parser.parse(source)!));
   });
 });
 
