@@ -15,21 +15,19 @@ export function isValidRoleName(name: string): boolean {
   return /^[a-zA-Z0-9_\-+:]+$/.test(name);
 }
 
-/** Roles with a dedicated mark and rule of their own, left to those. */
-const DEDICATED_ROLES = new Set(["term"]);
-
 const BACKSLASH = 0x5c;
 const BACKTICK = 0x60;
 
 /**
- * Markdown-it plugin for MyST roles Outline has no dedicated mark for —
+ * Markdown-it plugin for MyST roles — `` {term}`glossary term` ``,
  * `` {dot}`1` ``, `` {ref}`text <label>` ``, `` {abbr}`…` `` and so on —
  * a port of `mdit_py_plugins.myst_role`: a role name in braces, then a run
  * of backticks, then the content up to the next run of the same length.
  *
- * Runs before markdown-it's own "backticks" rule for the same reason as
- * `./termRole.ts`: left to it, the backtick span becomes inline code with
- * `{name}` stranded in front of it as literal text. It only ever looks at
+ * Runs before markdown-it's own "backticks" rule: left to it, the backtick
+ * span becomes inline code with `{name}` stranded in front of it as literal
+ * text, which only *looks* preserved because the two reassemble into the
+ * same string on the way back out. It only ever looks at
  * a `{` in running text: braces inside an inline code span
  * (`` `GET /items/{id}` ``) are already consumed by then and never reach
  * this rule.
@@ -49,9 +47,6 @@ export default function mystRoleRule(md: MarkdownIt) {
     }
 
     const name = match[1];
-    if (DEDICATED_ROLES.has(name)) {
-      return false;
-    }
     if (start > 0 && state.src.charCodeAt(start - 1) === BACKSLASH) {
       return false;
     }

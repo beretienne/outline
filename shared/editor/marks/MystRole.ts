@@ -83,7 +83,8 @@ function roleRange(
 /**
  * Make the selection (or the role at the cursor) a role with the given
  * name, replacing any role already there — this is also how a role is
- * renamed. `term` becomes a glossary term, which has its own mark.
+ * renamed. A glossary term is the role named `term`; a stored
+ * `term_reference` mark in the range is replaced too.
  *
  * @param type - the `myst_role` mark type.
  * @param name - the role's name, without braces.
@@ -98,14 +99,14 @@ function setRole(type: MarkType, name: string): Command {
     if (!range || range.from === range.to) {
       return false;
     }
-    const term = state.schema.marks.term_reference;
-    const mark =
-      name === "term" && term ? term.create() : type.create({ name });
+    const legacyTerm = state.schema.marks.term_reference;
     const tr = state.tr.removeMark(range.from, range.to, type);
-    if (term) {
-      tr.removeMark(range.from, range.to, term);
+    if (legacyTerm) {
+      tr.removeMark(range.from, range.to, legacyTerm);
     }
-    dispatch?.(tr.addMark(range.from, range.to, mark).scrollIntoView());
+    dispatch?.(
+      tr.addMark(range.from, range.to, type.create({ name })).scrollIntoView()
+    );
     return true;
   };
 }
@@ -375,16 +376,17 @@ function keepRoleWhileEditing(): Plugin {
 }
 
 /**
- * A MyST role Outline has no dedicated mark for — `` {dot}`1` ``,
+ * A MyST role — `` {term}`glossary term` ``, `` {dot}`1` ``,
  * `` {ref}`text <label>` ``, `` {abbr}`…` ``, a project's own custom roles —
- * one mark for all of them, carrying the role's name. `{term}` keeps its
- * own mark (`TermReference`).
+ * one mark for all of them, carrying the role's name. A glossary term is the
+ * role named `term`; documents stored before that still carry the old
+ * `TermReference` mark.
  *
- * Visual distinction only, like `TermReference`: nothing is resolved or
- * linked. It shows a writer that this span is a role, and which one, and
- * writes it back exactly as it arrived. Excludes every formatting mark for
- * the same reason as `TermReference` — a role's content is literal text to
- * Sphinx — and is written unescaped.
+ * Visual distinction only: nothing is resolved or linked. It shows a writer
+ * that this span is a role, and which one, and writes it back exactly as it
+ * arrived. Excludes every formatting mark, since a role's content is literal
+ * text to Sphinx — bold or a link inside it would serialize to markup the
+ * role swallows whole — and is written unescaped.
  */
 export default class MystRole extends Mark {
   get name() {
@@ -404,6 +406,11 @@ export default class MystRole extends Mark {
         {
           tag: `span.${EditorStyleHelper.mystRole}`,
           getAttrs: (dom: HTMLElement) => ({ name: dom.dataset.role ?? "" }),
+        },
+        // HTML copied from a glossary term stored with the old mark.
+        {
+          tag: `span.${EditorStyleHelper.termReference}`,
+          attrs: { name: "term" },
         },
       ],
       toDOM: (mark) => [
@@ -440,8 +447,7 @@ export default class MystRole extends Mark {
 
   /**
    * Typing the closing backtick of `` {name}`text` `` turns the span into a
-   * role. Registered after `TermReference`, which claims `{term}` first,
-   * and ahead of `Code`, whose own backtick rule matches the same keystroke
+   * role — `{term}` included. Registered ahead of `Code`, whose own backtick rule matches the same keystroke
    * (see `nodes/index.ts`).
    */
   inputRules({ type }: { type: MarkType }) {
@@ -450,9 +456,6 @@ export default class MystRole extends Mark {
         /\{([a-zA-Z0-9_\-+:]+)\}`([^`\n]+)`$/,
         (state, match, start, end) => {
           const [, name, text] = match;
-          if (name === "term") {
-            return null;
-          }
           return state.tr
             .replaceWith(
               start,

@@ -120,10 +120,14 @@ code) to mark them as a reference to a glossary entry, the way Sphinx's
 `` {term}`text` `` role does. Click again to remove it. Typing
 `` {term}`field of view` `` with the closing backtick does the same.
 
-In Outline it shows as the words with a dotted underline, and that is all: it is
-a marker, not a link, and nothing happens on click. It travels exactly as
-written. Bold, italics, links and code cannot be applied inside one, because
-Sphinx reads what is between the backticks literally. Only the plain form is
+In Outline it shows like every other role: the words on a light background,
+with `{term}` in small grey letters in front of them. That is all: it is a
+marker, not a link, and nothing happens on click. It travels exactly as
+written. A glossary term is simply the role named `term` (see
+[Other roles](#other-roles--the-myst-role-toolbar-button-or-typing-nametext)),
+so its text is edited the same way. Bold, italics, links and code cannot be
+applied inside one, because Sphinx reads what is between the backticks
+literally. Only the plain form is
 supported; Sphinx's `` {term}`Display text <target>` `` is kept as typed but not
 interpreted.
 

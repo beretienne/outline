@@ -109,11 +109,33 @@ describe("MystRole commands (the Role toolbar button)", () => {
     });
   });
 
-  it("turns 'term' into a glossary term instead", () => {
+  it("makes a glossary term the role named 'term'", () => {
     const { state } = apply(p("see CAM"), 5, 8, (s, d) =>
       commands.myst_role({ name: "term" })(s, d)
     );
-    expect(runs(state)[1]).toEqual({ text: "CAM", marks: ["term_reference"] });
+    expect(runs(state)[1]).toEqual({
+      text: "CAM",
+      marks: ["myst_role"],
+      role: "term",
+    });
+  });
+
+  it("replaces a term stored with the older mark", () => {
+    const { term_reference: legacy } = schema.marks;
+    const doc = schema.nodes.doc.create(null, [
+      schema.nodes.paragraph.create(null, [
+        schema.text("see "),
+        schema.text("CAM", [legacy.create()]),
+      ]),
+    ]);
+    const { state } = apply(doc.firstChild!, 5, 8, (s, d) =>
+      commands.myst_role({ name: "term" })(s, d)
+    );
+    expect(runs(state)[1]).toEqual({
+      text: "CAM",
+      marks: ["myst_role"],
+      role: "term",
+    });
   });
 
   it.each([
@@ -149,7 +171,7 @@ describe("MystRole commands (the Role toolbar button)", () => {
 });
 
 describe("MystRole input rule", () => {
-  it("turns a typed {name}`text` into a role, and {term} still into a term", () => {
+  it("turns a typed {name}`text` into a role, {term} included", () => {
     const plugin = inputRules({
       rules: extensionManager.inputRules({ schema }),
     });
@@ -187,7 +209,7 @@ describe("MystRole input rule", () => {
     expect(runs(state)).toEqual([
       { text: "HTTP", marks: ["myst_role"], role: "abbr" },
       { text: " and ", marks: [] },
-      { text: "CAM", marks: ["term_reference"] },
+      { text: "CAM", marks: ["myst_role"], role: "term" },
       { text: " ok", marks: [] },
     ]);
   });

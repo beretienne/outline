@@ -1482,21 +1482,16 @@ ${
   margin: 8px 0;
 }
 
-/* A {term} role: marked as a glossary reference, not a link — there is
-   nothing to click through to. */
+/* A MyST role — {term} included: nothing is resolved or linked, so it only
+   needs to read as "this is a role, and which one" — the content on a light
+   chip, the role's name in front of it, dimmed and smaller. The chip also
+   shows exactly where the role ends, which matters while editing: text
+   typed after it is outside it. The name is drawn by CSS and is not part of
+   the text, so it can't be edited or deleted by accident; the role's own
+   name is kept on the mark. A glossary term a document stored with the
+   older term_reference mark has no data-role, so its name is spelled out. */
+.${EditorStyleHelper.mystRole},
 .${EditorStyleHelper.termReference} {
-  text-decoration: underline dotted;
-  text-decoration-thickness: 1.5px;
-  text-underline-offset: 3px;
-  cursor: help;
-}
-
-/* Any other MyST role: nothing is resolved or linked, so it only needs to
-   read as "this is a role, and which one" — the content on a light chip,
-   the role's name in front of it, dimmed and smaller. The name is drawn by
-   CSS and is not part of the text, so it can't be edited or deleted by
-   accident; the role's own name is kept on the mark. */
-.${EditorStyleHelper.mystRole} {
   background: ${props.theme.codeBackground};
   border-radius: 3px;
   padding: 0 3px;
@@ -1508,6 +1503,10 @@ ${
     font-size: 0.8em;
     margin-right: 2px;
   }
+}
+
+.${EditorStyleHelper.termReference}::before {
+  content: "{term}";
 }
 
 /* A role being edited — text typed at its end still goes into it, until the

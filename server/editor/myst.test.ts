@@ -1286,19 +1286,23 @@ describe("known limits", () => {
 });
 
 /**
- * `` {term}`text` `` is a real mark (`term_reference`), not inline code that
- * happens to sit next to the literal text `{term}` — which is what
- * markdown-it's own backticks rule made of it before, and which round-tripped
- * to the same string for the wrong reason.
+ * `` {term}`text` `` is a real mark — the `myst_role` mark every role gets,
+ * named `term` — not inline code that happens to sit next to the literal
+ * text `{term}`, which is what markdown-it's own backticks rule made of it
+ * before, and which round-tripped to the same string for the wrong reason.
  */
-describe("{term} role becomes a term_reference mark", () => {
+describe("{term} role becomes the myst_role mark named term", () => {
   function marksOf(source: string) {
     const found: { text: string; marks: string[] }[] = [];
     parser.parse(source)?.descendants((node) => {
       if (node.isText) {
         found.push({
           text: node.text ?? "",
-          marks: node.marks.map((mark) => mark.type.name),
+          marks: node.marks.map((mark) =>
+            mark.type.name === "myst_role"
+              ? `myst_role:${mark.attrs.name}`
+              : mark.type.name
+          ),
         });
       }
     });
@@ -1308,7 +1312,7 @@ describe("{term} role becomes a term_reference mark", () => {
   test("parses to the mark and drops the delimiters from the text", () => {
     expect(marksOf("See {term}`resolution` for details.")).toEqual([
       { text: "See ", marks: [] },
-      { text: "resolution", marks: ["term_reference"] },
+      { text: "resolution", marks: ["myst_role:term"] },
       { text: " for details.", marks: [] },
     ]);
   });
@@ -1330,7 +1334,7 @@ describe("{term} role becomes a term_reference mark", () => {
     expect(roundTrip(source).trim()).toBe(source);
     expect(marksOf(source)).toContainEqual({
       text: "other term",
-      marks: ["term_reference"],
+      marks: ["myst_role:term"],
     });
   });
 
@@ -1339,7 +1343,7 @@ describe("{term} role becomes a term_reference mark", () => {
     ["empty", "An {term}`` role."],
   ])("leaves a malformed role alone: %s", (_name, source) => {
     expect(
-      marksOf(source).some((t) => t.marks.includes("term_reference"))
+      marksOf(source).some((t) => t.marks.includes("myst_role:term"))
     ).toBe(false);
   });
 });
@@ -1393,9 +1397,9 @@ describe("other roles become a myst_role mark", () => {
     expect(roundTrip(once)).toBe(once);
   });
 
-  test("{term} keeps its own mark", () => {
+  test("{term} is the same mark, named term", () => {
     expect(rolesOf("{term}`CAM` and {dot}`3`.")).toEqual([
-      { text: "CAM", name: null, marks: ["term_reference"] },
+      { text: "CAM", name: "term", marks: ["myst_role"] },
       { text: " and ", name: null, marks: [] },
       { text: "3", name: "dot", marks: ["myst_role"] },
       { text: ".", name: null, marks: [] },

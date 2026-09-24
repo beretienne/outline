@@ -96,6 +96,12 @@ export default function formattingMenuItems(ctx: SelectionContext): MenuItem[] {
           ({ mark }) => mark.type === roleType
         )?.mark;
   const roleName: string | undefined = role?.attrs.name;
+  // A glossary term is the role named "term"; a document stored before that
+  // may still carry the older term_reference mark instead.
+  const legacyTerm =
+    !!schema.marks.term_reference &&
+    isMarkActive(schema.marks.term_reference)(state);
+  const isTerm = roleName === "term" || legacyTerm;
 
   const cellSelectionHasBackground = isTableCell
     ? hasNodeAttrMarkCellSelection(
@@ -478,13 +484,19 @@ export default function formattingMenuItems(ctx: SelectionContext): MenuItem[] {
       visible: canFormat,
     },
     {
-      // MyST's {term} role. Only the rich editor's schema has the mark.
-      name: "term_reference",
+      // MyST's {term} role: applies the role named "term", or removes the
+      // term under the selection. Needs text to attach to, or a term.
+      name: legacyTerm
+        ? "term_reference"
+        : isTerm
+          ? "removeMystRole"
+          : "myst_role",
+      attrs: isTerm ? undefined : { name: "term" },
       group: MenuItemGroup.inline,
       tooltip: t("Glossary term"),
       icon: <LibraryIcon />,
-      active: isMarkActive(schema.marks.term_reference),
-      visible: canFormat && !!schema.marks.term_reference,
+      active: () => isTerm,
+      visible: canFormat && !!roleType && (!isEmpty || isTerm),
     },
     {
       // Any other MyST role ({ref}, {abbr}, a project's own {dot}…). The
