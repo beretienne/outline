@@ -17,6 +17,9 @@ export type Props = {
   grow?: boolean;
   theme: DefaultTheme;
   userId?: string;
+  /** Draw the page without its MyST/Sphinx markup (roles, comments,
+   * targets, directive frames) — reading only, nothing stored changes. */
+  hideMystMarkup?: boolean;
 };
 
 export const fadeIn = keyframes`
@@ -3154,6 +3157,87 @@ li > .${EditorStyleHelper.toggleBlock} {
 }
 `;
 
+/**
+ * The page as a reader sees it, without its MyST/Sphinx markup: roles read
+ * as plain text, comments, targets and verbatim directives ({raw},
+ * {eval-rst}…) disappear, and a directive with ordinary content keeps the
+ * content without its frame. An {ifconfig} keeps a frame, labelled as an
+ * option, and neighbouring ones are drawn as one group — the variants the
+ * built manual chooses between. Only applied while reading.
+ */
+const hiddenMystMarkupStyle = (props: Props) =>
+  props.hideMystMarkup
+    ? css`
+        .${EditorStyleHelper.mystRole}, .${EditorStyleHelper.termReference} {
+          background: none;
+          padding: 0;
+          border-radius: 0;
+
+          &::before {
+            content: none;
+          }
+        }
+
+        .${EditorStyleHelper.mystComment},
+          .${EditorStyleHelper.mystTarget},
+          .${EditorStyleHelper.directiveBlock}[data-verbatim] {
+          display: none;
+        }
+
+        .${EditorStyleHelper.directiveBlock}:not([data-verbatim]) {
+          .${EditorStyleHelper.directiveLabelRow} {
+            display: none;
+          }
+        }
+
+        .${EditorStyleHelper.directiveBlock}:not([data-verbatim]):not(
+            [data-directive="ifconfig"]
+          ) {
+          background: none;
+          border: none;
+          border-radius: 0;
+          padding: 0;
+        }
+
+        .${EditorStyleHelper.directiveBlock}[data-directive="ifconfig"] {
+          background: none;
+          border-style: dashed;
+
+          &::before {
+            content: attr(data-option-label) " · " attr(data-argument);
+            display: block;
+            margin-bottom: 4px;
+            font-size: 12px;
+            font-weight: 600;
+            color: ${props.theme.textSecondary};
+          }
+        }
+
+        .component-container_directive:has(
+            > .${EditorStyleHelper.directiveBlock}[data-directive="ifconfig"]
+          )
+          + .component-container_directive:has(
+            > .${EditorStyleHelper.directiveBlock}[data-directive="ifconfig"]
+          )
+          > .${EditorStyleHelper.directiveBlock} {
+          margin-top: -9px;
+          border-top-left-radius: 0;
+          border-top-right-radius: 0;
+        }
+
+        .component-container_directive:has(
+            > .${EditorStyleHelper.directiveBlock}[data-directive="ifconfig"]
+          ):has(
+            + .component-container_directive
+              > .${EditorStyleHelper.directiveBlock}[data-directive="ifconfig"]
+          )
+          > .${EditorStyleHelper.directiveBlock} {
+          border-bottom-left-radius: 0;
+          border-bottom-right-radius: 0;
+        }
+      `
+    : "";
+
 const EditorContainer = styled.div<Props>`
   ${style}
   ${mathStyle}
@@ -3163,6 +3247,7 @@ const EditorContainer = styled.div<Props>`
   ${findAndReplaceStyle}
   ${emailStyle}
   ${textStyle}
+  ${hiddenMystMarkupStyle}
 `;
 
 export default EditorContainer;

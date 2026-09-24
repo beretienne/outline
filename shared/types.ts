@@ -379,6 +379,8 @@ export enum UserPreference {
   NotificationBadge = "notificationBadge",
   /** The display order of the reorderable sections in the sidebar. */
   SidebarSectionOrder = "sidebarSectionOrder",
+  /** Whether documents are read without their MyST/Sphinx markup. */
+  HideMystMarkup = "hideMystMarkup",
 }
 
 export enum HeadingPrefixStyle {
@@ -422,6 +424,7 @@ export type UserPreferences = {
   [UserPreference.ShowDocumentStats]?: boolean;
   [UserPreference.NotificationBadge]?: NotificationBadgeType;
   [UserPreference.SidebarSectionOrder]?: SidebarSection[];
+  [UserPreference.HideMystMarkup]?: boolean;
 };
 
 export type SourceMetadata = {

@@ -166,6 +166,26 @@ router.post(
 );
 
 router.post(
+  "collections.myst_names",
+  auth(),
+  validate(T.CollectionsMystNamesSchema),
+  async (ctx: APIContext<T.CollectionsMystNamesReq>) => {
+    const { id } = ctx.input.body;
+    const { user } = ctx.state.auth;
+    const collection = await Collection.findByPk(id, {
+      userId: user.id,
+      rejectOnEmpty: true,
+    });
+
+    authorize(user, "read", collection);
+
+    ctx.body = {
+      data: await collection.getMystNames(),
+    };
+  }
+);
+
+router.post(
   "collections.documents",
   auth(),
   validate(T.CollectionsDocumentsSchema),

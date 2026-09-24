@@ -1,6 +1,13 @@
 import invariant from "invariant";
 import { isEmpty, orderBy, sortBy } from "es-toolkit/compat";
-import { action, computed, makeObservable, override, runInAction } from "mobx";
+import {
+  action,
+  computed,
+  makeObservable,
+  observable,
+  override,
+  runInAction,
+} from "mobx";
 import type { Filter } from "@shared/helpers/FilterHelper";
 import {
   CollectionPermission,
@@ -13,7 +20,17 @@ import { client } from "~/utils/ApiClient";
 import IndexedStore from "./base/IndexedStore";
 import type RootStore from "./RootStore";
 
+/** MyST directive and role names used in a collection's documents. */
+export interface MystNames {
+  directives: string[];
+  roles: string[];
+}
+
 export default class CollectionsStore extends IndexedStore<Collection> {
+  /** MyST names per collection id, as loaded by `fetchMystNames`. */
+  @observable
+  mystNames = new Map<string, MystNames>();
+
   constructor(rootStore: RootStore) {
     super(rootStore, Collection);
     makeObservable(this);
@@ -30,6 +47,30 @@ export default class CollectionsStore extends IndexedStore<Collection> {
       ? this.data.get(this.rootStore.ui.activeCollectionId)
       : undefined;
   }
+
+  /**
+   * Loads the MyST directive and role names used in a collection's
+   * documents, once per session, into `mystNames`.
+   *
+   * @param id - the collection id.
+   * @returns the names, or undefined if they could not be loaded.
+   */
+  @action
+  fetchMystNames = async (id: string): Promise<MystNames | undefined> => {
+    const cached = this.mystNames.get(id);
+    if (cached) {
+      return cached;
+    }
+    try {
+      const res = await client.post("/collections.myst_names", { id });
+      const names: MystNames = res.data;
+      runInAction(() => this.mystNames.set(id, names));
+      return names;
+    } catch (_err) {
+      // Only suggestions depend on this; the built-in lists still work.
+      return undefined;
+    }
+  };
 
   @computed
   get allActive() {

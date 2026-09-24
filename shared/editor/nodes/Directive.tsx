@@ -1,3 +1,4 @@
+import { t } from "i18next";
 import type Token from "markdown-it/lib/token.mjs";
 import { SettingsIcon } from "outline-icons";
 import { wrapIn } from "prosemirror-commands";
@@ -11,9 +12,11 @@ import type { Command } from "prosemirror-state";
 import { TextSelection } from "prosemirror-state";
 import type { Primitive } from "utility-types";
 import { insertGlossary } from "../commands/definitionList";
+import { insertVerbatimDirective } from "../commands/verbatimDirective";
 import { DEFAULT_FENCE_LENGTH, requiredFenceLength } from "../lib/fenceLength";
 import type { MarkdownSerializerState } from "../lib/markdown/serializer";
 import directivesRule, {
+  DIRECTIVE_ALLOWLIST,
   isVerbatimDirective,
   readDirectiveInfo,
 } from "../rules/directives";
@@ -177,9 +180,14 @@ export default class Directive extends Node {
       // Deliberately `wrapIn`, not `Notice`'s own `toggleWrap`: that lifts
       // out of the node whenever the cursor is already inside one, which
       // would make inserting a `{grid-item}` inside a `{grid}` — the whole
-      // point of nesting these — unwrap the grid instead.
+      // point of nesting these — unwrap the grid instead. A directive whose
+      // body is not Markdown gets an empty plain-text body instead.
       container_directive: (attrs: Record<string, Primitive>): Command =>
-        attrs?.directive === "glossary" ? insertGlossary : wrapIn(type, attrs),
+        attrs?.directive === "glossary"
+          ? insertGlossary
+          : DIRECTIVE_ALLOWLIST.includes(String(attrs?.directive ?? ""))
+            ? wrapIn(type, attrs)
+            : insertVerbatimDirective(type, attrs),
     };
   }
 
@@ -281,7 +289,16 @@ export default class Directive extends Node {
     );
 
     return (
-      <div className={EditorStyleHelper.directiveBlock}>
+      <div
+        className={EditorStyleHelper.directiveBlock}
+        // Read by the hidden-markup styles (see `Styles.ts`): which directive
+        // this is, whether its body is verbatim, and how an {ifconfig} is
+        // labelled there.
+        data-directive={node.attrs.directive}
+        data-argument={node.attrs.argument || undefined}
+        data-verbatim={isVerbatimDirective(node) ? "true" : undefined}
+        data-option-label={t("Option")}
+      >
         <div
           className={EditorStyleHelper.directiveLabelRow}
           contentEditable={false}

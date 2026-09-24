@@ -64,6 +64,15 @@ function Preferences() {
     [user, t]
   );
 
+  const handleHideMystMarkupChange = React.useCallback(
+    async (checked: boolean) => {
+      user.setPreference(UserPreference.HideMystMarkup, checked);
+      await user.save();
+      toast.success(t("Preferences saved"));
+    },
+    [user, t]
+  );
+
   const handleCodeBlockLineNumbersChange = React.useCallback(
     async (checked: boolean) => {
       user.setPreference(UserPreference.CodeBlockLineNumers, checked);
@@ -247,6 +256,20 @@ function Preferences() {
           name={UserPreference.CodeBlockLineNumers}
           checked={user.getPreference(UserPreference.CodeBlockLineNumers)}
           onChange={handleCodeBlockLineNumbersChange}
+        />
+      </SettingRow>
+      <SettingRow
+        name={UserPreference.HideMystMarkup}
+        label={t("Hide Sphinx markup when reading")}
+        description={t(
+          "Read documents without their MyST roles, comments, targets and directive frames. Conditional content stays, marked as an option. Everything shows again while editing, and the documents themselves are unchanged."
+        )}
+      >
+        <Switch
+          id={UserPreference.HideMystMarkup}
+          name={UserPreference.HideMystMarkup}
+          checked={!!user.getPreference(UserPreference.HideMystMarkup)}
+          onChange={handleHideMystMarkupChange}
         />
       </SettingRow>
       <SettingRow

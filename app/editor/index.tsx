@@ -53,7 +53,7 @@ import type {
   ProsemirrorMark,
   UserPreferences,
 } from "@shared/types";
-import { HeadingPrefixStyle } from "@shared/types";
+import { HeadingPrefixStyle, UserPreference } from "@shared/types";
 import { headingPrefixPluginKey } from "@shared/editor/extensions/HeadingPrefix";
 import { ProsemirrorHelper } from "@shared/utils/ProsemirrorHelper";
 import EventEmitter from "@shared/utils/events";
@@ -1075,6 +1075,10 @@ export class Editor extends React.PureComponent<
               grow={grow}
               readOnly={readOnly}
               readOnlyWriteCheckboxes={canUpdate}
+              hideMystMarkup={
+                !!readOnly &&
+                !!this.props.userPreferences?.[UserPreference.HideMystMarkup]
+              }
               focusedCommentId={this.props.focusedCommentId}
               hoveredCommentId={this.state.hoveredCommentId ?? undefined}
               userId={this.props.userId}

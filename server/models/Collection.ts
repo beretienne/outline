@@ -17,6 +17,7 @@ import {
   type ScopeOptions,
   type SaveOptions,
   Op,
+  QueryTypes,
 } from "sequelize";
 import {
   Sequelize,
@@ -789,6 +790,43 @@ class Collection extends ParanoidModel<
       Collection.DOCUMENT_STRUCTURE_CACHE_TTL
     );
     return result ?? null;
+  };
+
+  /**
+   * The MyST directive and role names used in this collection's published
+   * documents — a project's own `{dot}` or `{vm}` as well as the standard
+   * ones — so the editor can offer them alongside the built-in list.
+   *
+   * @returns the distinct directive and role names, each sorted.
+   */
+  getMystNames = async (): Promise<{
+    directives: string[];
+    roles: string[];
+  }> => {
+    const rows = await this.sequelize.query<{ kind: string; name: string }>(
+      `SELECT DISTINCT kind, name FROM (
+         SELECT 'directive' AS kind,
+           jsonb_path_query(content, 'strict $.** ? (@.type == "container_directive").attrs.directive') #>> '{}' AS name
+         FROM documents
+         WHERE "collectionId" = :collectionId AND "deletedAt" IS NULL AND "publishedAt" IS NOT NULL
+         UNION ALL
+         SELECT 'role' AS kind,
+           jsonb_path_query(content, 'strict $.** ? (@.type == "myst_role").attrs.name') #>> '{}' AS name
+         FROM documents
+         WHERE "collectionId" = :collectionId AND "deletedAt" IS NULL AND "publishedAt" IS NOT NULL
+       ) AS names
+       WHERE name <> ''`,
+      {
+        replacements: { collectionId: this.id },
+        type: QueryTypes.SELECT,
+      }
+    );
+    const namesOf = (kind: string) =>
+      rows
+        .filter((row) => row.kind === kind)
+        .map((row) => row.name)
+        .sort();
+    return { directives: namesOf("directive"), roles: namesOf("role") };
   };
 
   getDocumentTree = (documentId: string): NavigationNode | null => {

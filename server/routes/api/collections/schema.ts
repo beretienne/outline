@@ -84,6 +84,14 @@ export const CollectionsInfoSchema = BaseSchema.extend({
 
 export type CollectionsInfoReq = z.infer<typeof CollectionsInfoSchema>;
 
+export const CollectionsMystNamesSchema = BaseSchema.extend({
+  body: BaseIdSchema,
+});
+
+export type CollectionsMystNamesReq = z.infer<
+  typeof CollectionsMystNamesSchema
+>;
+
 export const CollectionsDocumentsSchema = BaseSchema.extend({
   body: BaseIdSchema,
 });

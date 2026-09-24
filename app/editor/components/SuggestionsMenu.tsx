@@ -602,6 +602,14 @@ function SuggestionsMenu<T extends MenuItem>(props: Props<T>) {
       (item.title || "").toLocaleLowerCase().includes(searchInput) ||
       (item.keywords || "").toLocaleLowerCase().includes(searchInput);
 
+    // A submenu's children are found by what they show, not by their
+    // command name: many children share one (every template is "noop",
+    // every directive "container_directive"), so matching it would list all
+    // of them for a search as short as "no" or "in".
+    const matchesChildSearch = (item: MenuItem) =>
+      (item.title || "").toLocaleLowerCase().includes(searchInput) ||
+      (item.keywords || "").toLocaleLowerCase().includes(searchInput);
+
     // When searching, flatten matching children into the top-level list so
     // they are directly navigable with the keyboard. If all children match,
     // exclude the parent item since it would be redundant.
@@ -612,7 +620,9 @@ function SuggestionsMenu<T extends MenuItem>(props: Props<T>) {
         if ("children" in item && item.children) {
           const children = resolveChildren(item.children);
           if (children) {
-            const matching = children.filter(matchesSearch);
+            const matching = children.filter(
+              (child) => child.name !== "separator" && matchesChildSearch(child)
+            );
             if (matching.length > 0) {
               for (const child of matching) {
                 const { children: _, ...flat } = child;

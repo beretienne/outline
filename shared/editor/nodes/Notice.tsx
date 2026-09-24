@@ -53,6 +53,16 @@ const directiveToNoticeStyle: Record<string, NoticeTypes> = {
 };
 
 /**
+ * The notice style an admonition directive is drawn in.
+ *
+ * @param directive - the admonition's name, e.g. "warning".
+ * @returns the notice style, or Info for a name with no style of its own.
+ */
+export function noticeStyleForDirective(directive: string): NoticeTypes {
+  return directiveToNoticeStyle[directive] ?? NoticeTypes.Info;
+}
+
+/**
  * The directive a notice is written back as when it does not remember how it
  * arrived — one created in the editor rather than parsed from MyST.
  */

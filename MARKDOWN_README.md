@@ -127,9 +127,8 @@ written. A glossary term is simply the role named `term` (see
 [Other roles](#other-roles--the-myst-role-toolbar-button-or-typing-nametext)),
 so its text is edited the same way. Bold, italics, links and code cannot be
 applied inside one, because Sphinx reads what is between the backticks
-literally. Only the plain form is
-supported; Sphinx's `` {term}`Display text <target>` `` is kept as typed but not
-interpreted.
+literally. Only the plain form is supported; Sphinx's
+`` {term}`Display text <target>` `` is kept as typed but not interpreted.
 
 ### Other roles — the **MyST role** toolbar button, or typing `` {name}`text` ``
 
@@ -139,9 +138,11 @@ your project defines itself, like `` {dot}`1` `` — is shown as its text on a
 light background, with the role's name in small grey letters in front of it.
 
 Select some words and click **MyST role** (the **#** icon, next to Glossary
-term), type the role's name — `ref`, `abbr`, `dot` — and press **Enter**.
-Typing `` {dot}`1` `` with its closing backtick does the same, and pasted or
-synced text arrives as roles too.
+term), type the role's name — `ref`, `abbr`, `dot` — and press **Enter**. As
+you type, matching roles are listed below the field — the standard ones and
+the ones this collection's pages already use — to pick with ↓/↑ and Enter, or
+a click. Typing `` {dot}`1` `` with its closing backtick does the same, and
+pasted or synced text arrives as roles too.
 
 **To rename or remove one**, select its text (double-click works) and click
 **#** again: the field shows the current name — change it and press Enter, or
@@ -274,19 +275,25 @@ does not show — the cell simply reads as plain:
 The colour goes wherever the cell goes, so editing the cell's text keeps it.
 Deleting the comment is how you clear the shading from the source side.
 
-### Sphinx blocks — conditional content, grids, margin notes, glossaries
+### Sphinx blocks — the **Sphinx directive** menu entry
 
-Type `/` and pick one (or search by name: `/ifconfig`, `/grid`, `/margin`,
-`/glossary`). Each shows as a framed box with its directive name in the corner,
-and comes back as the MyST directive you would have written by hand.
+Type `/directive` and open **Sphinx directive** (→ or Enter): it lists every
+MyST directive, each with a one-line description, plus the ones this
+collection's pages already use (a project's own `{vm}`, say). Or type the
+directive's own name straight after `/` — `/ifconfig`, `/raw`, `/eval` — and
+the list narrows as you type. Each shows as a framed box with its directive
+name in the corner, and comes back as the MyST directive you would have
+written by hand.
 
-| Menu entry | Gives you | Notes |
+| Directive | Gives you | Notes |
 | --- | --- | --- |
-| Conditional content | `{ifconfig}` | Click the label and add the condition: `{ifconfig} Class == 'A'`. |
-| Grid | `{grid} 2` | Edit the label to change the number of columns. |
-| Grid item | `{grid-item}` | Use it *inside* a grid; it nests instead of replacing the grid. |
-| Margin note | `{margin}` | |
-| Glossary | `{glossary}` | Starts with one blank entry, described below. |
+| `{ifconfig}` | conditional content | Click the label and add the condition: `{ifconfig} Class == 'A'`. |
+| `{grid}` | `{grid} 2` | Edit the label to change the number of columns. |
+| `{grid-item}` | a grid cell | Use it *inside* a grid; it nests instead of replacing the grid. |
+| `{margin}` | a margin note | |
+| `{glossary}` | a glossary | Starts with one blank entry, described below. |
+| `{note}`, `{warning}`… | a callout | Written back as that admonition. |
+| any other | a box with a plain-text area | See "Every other directive" below. |
 
 The name and argument in the corner can be edited in place; a label without
 braces around the name is refused. What the argument means to Sphinx is up to
@@ -311,6 +318,18 @@ remove a blank entry, or a glossary that is still blank, press Backspace inside
 it. A glossary cannot be placed inside another glossary's definition.
 
 **Figures** are inserted the same way — see [Captions](#captions-a-caption-in-outline-is-not-a-caption-in-the-manual).
+
+#### Reading a page without the Sphinx markup
+
+In **Settings → Preferences**, **Hide Sphinx markup when reading** shows pages
+the way a reader of the manual sees them: roles read as plain text; comments,
+cross-reference targets and plain-text directives (`{raw}`, `{eval-rst}`…)
+disappear; `{grid}`, `{margin}` and the like keep their content without the
+frame. An `{ifconfig}` keeps a dashed frame labelled **Option · Class == 'A'**,
+and neighbouring ones are drawn as one group — the variants the manual is
+built from. Only the display changes, never the page itself, and everything
+shows again as soon as you click **Edit** (with "Separate editing" off, pages
+are always being edited, so the setting has no effect).
 
 ### Comments — lines starting with %
 

@@ -1455,6 +1455,67 @@ describe("#collections.memberships", () => {
   });
 });
 
+describe("#collections.myst_names", () => {
+  it("should return the directive and role names used in published documents", async () => {
+    const team = await buildTeam();
+    const user = await buildUser({ teamId: team.id });
+    const collection = await buildCollection({
+      userId: user.id,
+      teamId: team.id,
+    });
+    await buildDocument({
+      userId: user.id,
+      teamId: team.id,
+      collectionId: collection.id,
+      text: ":::{raw} latex\n\\newpage\n:::\n\nSee {dot}`1` and {term}`CAM`.",
+    });
+    await buildDocument({
+      userId: user.id,
+      teamId: team.id,
+      collectionId: collection.id,
+      text: "::::{ifconfig} Class == 'A'\nOnly {vm}`here`.\n::::",
+    });
+    await buildDocument({
+      userId: user.id,
+      teamId: team.id,
+      collectionId: collection.id,
+      publishedAt: null,
+      text: "A draft with {secret}`role`.",
+    });
+
+    const res = await server.post("/api/collections.myst_names", user, {
+      body: { id: collection.id },
+    });
+    const body = await res.json();
+    expect(res.status).toEqual(200);
+    expect(body.data).toEqual({
+      directives: ["ifconfig", "raw"],
+      roles: ["dot", "term", "vm"],
+    });
+  });
+
+  it("should require read access to the collection", async () => {
+    const team = await buildTeam();
+    const user = await buildUser({ teamId: team.id });
+    const collection = await buildCollection({
+      userId: user.id,
+      teamId: team.id,
+    });
+    collection.permission = null;
+    await collection.save();
+    await UserMembership.destroy({
+      where: {
+        collectionId: collection.id,
+        userId: user.id,
+      },
+    });
+    const res = await server.post("/api/collections.myst_names", user, {
+      body: { id: collection.id },
+    });
+    expect(res.status).toEqual(403);
+  });
+});
+
 describe("#collections.info", () => {
   it("should return archivedBy for archived collections", async () => {
     const team = await buildTeam();
