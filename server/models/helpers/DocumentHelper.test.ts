@@ -1,6 +1,7 @@
 import { Node } from "prosemirror-model";
+import { Transform } from "prosemirror-transform";
 import * as Y from "yjs";
-import { schema } from "@server/editor";
+import { parser, schema } from "@server/editor";
 import documentCollaborativeUpdater from "@server/commands/documentCollaborativeUpdater";
 import Logger from "@server/logging/Logger";
 import type Document from "@server/models/Document";
@@ -1479,6 +1480,162 @@ Install instructions here.`,
       expect(
         DocumentHelper.stateHolds(stateOf(document), contentOf(document))
       ).toBe(true);
+    });
+
+    describe("comments", () => {
+      const withComment = (text: string, needle: string, id = "c1") => {
+        const doc = parser.parse(text);
+        let from = -1;
+        doc.descendants((node, pos) => {
+          const at = node.isText ? (node.text ?? "").indexOf(needle) : -1;
+          if (from === -1 && at !== -1) {
+            from = pos + at;
+          }
+        });
+        const tr = new Transform(doc).addMark(
+          from,
+          from + needle.length,
+          schema.marks.comment.create({ id, userId: "u1" })
+        );
+        return tr.doc;
+      };
+
+      const commented = (doc: Node, id = "c1") => {
+        let text = "";
+        doc.descendants((node) => {
+          if (
+            node.isText &&
+            node.marks.some(
+              (m) => m.type.name === "comment" && m.attrs.id === id
+            )
+          ) {
+            text += node.text;
+          }
+        });
+        return text;
+      };
+
+      const buildWith = async (doc: Node) => {
+        const document = await buildDocument({ text: "placeholder" });
+        document.content = doc.toJSON();
+        document.state = Buffer.from(
+          Y.encodeStateAsUpdate(ProsemirrorHelper.toYDoc(doc.toJSON()))
+        );
+        return document;
+      };
+
+      it("keeps a comment on text a Markdown update leaves in place", async () => {
+        const document = await buildWith(
+          withComment(
+            "First paragraph.\n\nThe reference point is fixed.",
+            "reference point"
+          )
+        );
+
+        DocumentHelper.applyMarkdownToDocument(
+          document,
+          "First paragraph, edited.\n\nThe reference point is fixed."
+        );
+
+        expect(commented(contentOf(document))).toBe("reference point");
+        const state = stateOf(document);
+        expect(DocumentHelper.stateHolds(state, contentOf(document))).toBe(
+          true
+        );
+      });
+
+      it("picks the occurrence whose surroundings match", async () => {
+        const document = await buildWith(
+          withComment(
+            "The camera is set up.\n\nThen the camera is calibrated.",
+            "camera is calibrated"
+          )
+        );
+        // Anchor on the second "camera" only.
+        const doc = contentOf(document);
+        let secondCamera = -1;
+        let seen = 0;
+        doc.descendants((node, pos) => {
+          const at = node.isText ? (node.text ?? "").indexOf("camera") : -1;
+          if (at !== -1 && ++seen === 2) {
+            secondCamera = pos + at;
+          }
+        });
+        const tr = new Transform(doc)
+          .removeMark(0, doc.content.size, schema.marks.comment)
+          .addMark(
+            secondCamera,
+            secondCamera + "camera".length,
+            schema.marks.comment.create({ id: "c1", userId: "u1" })
+          );
+        document.content = tr.doc.toJSON();
+
+        DocumentHelper.applyMarkdownToDocument(
+          document,
+          "The camera is set up.\n\nThen the camera is calibrated."
+        );
+
+        let anchoredIn = "";
+        contentOf(document).forEach((block) => {
+          if (commented(block)) {
+            anchoredIn = block.textContent;
+          }
+        });
+        expect(anchoredIn).toBe("Then the camera is calibrated.");
+      });
+
+      it("leaves a comment detached when its text is gone", async () => {
+        const document = await buildWith(
+          withComment("Keep this.\n\nRemove that.", "Remove that")
+        );
+
+        DocumentHelper.applyMarkdownToDocument(document, "Keep this.");
+
+        expect(commented(contentOf(document))).toBe("");
+      });
+
+      it("leaves a comment detached rather than guess between equal matches", () => {
+        const anchors = ProsemirrorHelper.getCommentAnchors(
+          withComment("A value here.", "value")
+        );
+        const { doc, missed } = ProsemirrorHelper.reanchorComments(
+          parser.parse("One value. Two value."),
+          [{ ...anchors[0], prefix: "", suffix: "" }]
+        );
+
+        expect(commented(doc)).toBe("");
+        expect(missed).toHaveLength(1);
+      });
+
+      it("keeps a comment on an image", async () => {
+        const markdown =
+          "Before.\n\n![A camera](https://example.com/camera.png)";
+        const doc = parser.parse(markdown);
+        let imagePos = -1;
+        doc.descendants((node, pos) => {
+          if (node.type.name === "image") {
+            imagePos = pos;
+          }
+        });
+        const image = doc.nodeAt(imagePos)!;
+        const tr = new Transform(doc).setNodeMarkup(imagePos, undefined, {
+          ...image.attrs,
+          marks: [{ type: "comment", attrs: { id: "c1", userId: "u1" } }],
+        });
+        const document = await buildWith(tr.doc);
+
+        DocumentHelper.applyMarkdownToDocument(document, markdown);
+
+        let ids: string[] = [];
+        contentOf(document).descendants((node) => {
+          if (node.type.name === "image") {
+            ids = (node.attrs.marks ?? []).map(
+              (m: { attrs: { id: string } }) => m.attrs.id
+            );
+          }
+        });
+        expect(ids).toEqual(["c1"]);
+      });
     });
 
     it("leaves nothing for an editing session to save", async () => {

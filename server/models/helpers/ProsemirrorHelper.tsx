@@ -10,6 +10,7 @@ import {
   type DecorationSource,
 } from "prosemirror-view";
 import { Node, Fragment } from "prosemirror-model";
+import { Transform } from "prosemirror-transform";
 import { renderToString } from "react-dom/server";
 import styled, { ServerStyleSheet, ThemeProvider } from "styled-components";
 import {
@@ -93,6 +94,41 @@ export type MentionAttrs = {
   unfurl?: UnfurlResponse[keyof UnfurlResponse];
 };
 
+/** The attributes of a comment mark. */
+export interface CommentMarkAttrs {
+  id: string;
+  userId: string;
+  resolved: boolean;
+  draft: boolean;
+}
+
+/**
+ * Where a comment is anchored in a document, recorded so that the anchor can
+ * be found again once the document has been rebuilt from Markdown, which has
+ * no syntax for it.
+ */
+export interface CommentAnchor {
+  /** The comment mark's attributes. */
+  attrs: CommentMarkAttrs;
+  /** The highlighted plain text, for a comment on text. */
+  text?: string;
+  /** Up to `commentAnchorContext` characters of plain text before it. */
+  prefix?: string;
+  /** Up to `commentAnchorContext` characters of plain text after it. */
+  suffix?: string;
+  /** The hash of the commented node, for a comment on a node (an image, say). */
+  nodeHash?: string;
+}
+
+/** A run of a document's plain text and the ProseMirror range it came from. */
+interface PlainTextSegment {
+  plainStart: number;
+  pmFrom: number;
+  pmTo: number;
+  length: number;
+  isAtom: boolean;
+}
+
 const pluginsWithSafeDecorations = new WeakSet<Plugin>();
 
 // jsdom does not implement ResizeObserver, and the exported document never
@@ -143,6 +179,9 @@ export class ProsemirrorHelper extends SharedProsemirrorHelper {
    * snippet outward when climbing toward surrounding context.
    */
   static readonly mentionEmailMaxChars = 1000;
+
+  /** Characters of text around a comment anchor recorded to find it again. */
+  static readonly commentAnchorContext = 32;
 
   /**
    * Returns the input text as a Y.Doc.
@@ -1474,6 +1513,157 @@ export class ProsemirrorHelper extends SharedProsemirrorHelper {
     }
   }
 
+  /**
+   * Records where each comment is anchored in the document: the highlighted
+   * text with some of the text around it, or the hash of the commented node.
+   *
+   * @param doc The document.
+   * @param ids Only record these comments, when given.
+   * @returns One anchor per comment, in document order.
+   */
+  static getCommentAnchors(doc: Node, ids?: Set<string>): CommentAnchor[] {
+    const ranges = new Map<
+      string,
+      { attrs: CommentMarkAttrs; from: number; to: number }
+    >();
+    const anchors: CommentAnchor[] = [];
+    const wanted = (id: string) => !ids || ids.has(id);
+
+    doc.descendants((node, pos) => {
+      for (const mark of node.marks) {
+        if (mark.type.name !== "comment" || !wanted(mark.attrs.id)) {
+          continue;
+        }
+        const range = ranges.get(mark.attrs.id);
+        if (range) {
+          range.to = pos + node.nodeSize;
+        } else {
+          ranges.set(mark.attrs.id, {
+            attrs: ProsemirrorHelper.toCommentMarkAttrs(mark.attrs),
+            from: pos,
+            to: pos + node.nodeSize,
+          });
+        }
+      }
+
+      const nodeMarks: unknown = node.attrs.marks;
+      if (Array.isArray(nodeMarks)) {
+        for (const mark of nodeMarks) {
+          if (mark?.type === "comment" && wanted(mark.attrs?.id)) {
+            anchors.push({
+              attrs: ProsemirrorHelper.toCommentMarkAttrs(mark.attrs),
+              nodeHash: SharedProsemirrorHelper.getNodeHash(node),
+            });
+          }
+        }
+      }
+    });
+
+    const { plain, segments } = ProsemirrorHelper.plainTextSegments(doc);
+    const context = ProsemirrorHelper.commentAnchorContext;
+
+    for (const { attrs, from, to } of ranges.values()) {
+      const start = ProsemirrorHelper.positionToPlain(segments, from, "start");
+      const end = ProsemirrorHelper.positionToPlain(segments, to, "end");
+      if (start === null || end === null || end <= start) {
+        continue;
+      }
+      anchors.push({
+        attrs,
+        text: plain.slice(start, end),
+        prefix: plain.slice(Math.max(0, start - context), start),
+        suffix: plain.slice(end, end + context),
+      });
+    }
+
+    return anchors;
+  }
+
+  /**
+   * Puts comment anchors recorded with `getCommentAnchors` back into a
+   * document, typically the same document rebuilt from Markdown. A comment on
+   * text goes back on the occurrence of its text whose surrounding text
+   * matches best; one whose text is gone, or occurs several times with no
+   * occurrence matching better than the others, is left out rather than
+   * guessed. A comment on a node goes back on the node with the same hash.
+   *
+   * @param doc The document to anchor the comments in.
+   * @param anchors The anchors to restore.
+   * @returns The document with the comments anchored, and the anchors that
+   * could not be placed.
+   */
+  static reanchorComments(
+    doc: Node,
+    anchors: CommentAnchor[]
+  ): { doc: Node; missed: CommentAnchor[] } {
+    const missed: CommentAnchor[] = [];
+    const tr = new Transform(doc);
+    const { plain, segments } = ProsemirrorHelper.plainTextSegments(doc);
+
+    for (const anchor of anchors) {
+      if (anchor.nodeHash) {
+        // Nodes with the same attributes share a hash (table cells often
+        // do), so only a hash that picks out one node is trusted.
+        let count = 0;
+        tr.doc.descendants((node) => {
+          if (
+            !node.isText &&
+            SharedProsemirrorHelper.getNodeHash(node) === anchor.nodeHash
+          ) {
+            count++;
+          }
+        });
+        const match =
+          count === 1
+            ? SharedProsemirrorHelper.findNodeByHash(tr.doc, anchor.nodeHash)
+            : null;
+        if (!match || !("marks" in (match.node.type.spec.attrs ?? {}))) {
+          missed.push(anchor);
+          continue;
+        }
+        const marks: { type: string; attrs?: { id?: string } }[] =
+          match.node.attrs.marks ?? [];
+        if (!marks.some((m) => m.attrs?.id === anchor.attrs.id)) {
+          tr.setNodeMarkup(match.pos, undefined, {
+            ...match.node.attrs,
+            marks: [...marks, { type: "comment", attrs: anchor.attrs }],
+          });
+        }
+        continue;
+      }
+
+      const start = anchor.text
+        ? ProsemirrorHelper.bestOccurrence(plain, anchor)
+        : null;
+      const range =
+        start === null || !anchor.text
+          ? null
+          : ProsemirrorHelper.plainRangeToPositions(
+              segments,
+              start,
+              start + anchor.text.length
+            );
+      if (!range) {
+        missed.push(anchor);
+        continue;
+      }
+
+      const mark = schema.marks.comment.create(anchor.attrs);
+      tr.addMark(range.from, range.to, mark);
+
+      // A mark excluded by one already on the text is not added.
+      let placed = false;
+      tr.doc.nodesBetween(range.from, range.to, (node) => {
+        placed ||= mark.isInSet(node.marks) !== undefined;
+      });
+      if (!placed) {
+        missed.push(anchor);
+      }
+    }
+
+    return { doc: tr.doc, missed };
+  }
+
   private static applyCommentMarkAtRange(
     yjsDoc: Y.Doc,
     doc: Node,
@@ -1563,19 +1753,58 @@ export class ProsemirrorHelper extends SharedProsemirrorHelper {
       return null;
     }
 
+    const { plain, segments } = ProsemirrorHelper.plainTextSegments(doc);
+    const prefix = options.prefix ?? "";
+    const suffix = options.suffix ?? "";
+
+    let startIdx = -1;
+    let searchFrom = 0;
+    while (true) {
+      const candidate = plain.indexOf(needle, searchFrom);
+      if (candidate === -1) {
+        return null;
+      }
+      const candidateEnd = candidate + needle.length;
+      const prefixOk =
+        prefix.length === 0 ||
+        (candidate >= prefix.length &&
+          plain.substring(candidate - prefix.length, candidate) === prefix);
+      const suffixOk =
+        suffix.length === 0 ||
+        (candidateEnd + suffix.length <= plain.length &&
+          plain.substring(candidateEnd, candidateEnd + suffix.length) ===
+            suffix);
+      if (prefixOk && suffixOk) {
+        startIdx = candidate;
+        break;
+      }
+      searchFrom = candidate + 1;
+    }
+
+    return ProsemirrorHelper.plainRangeToPositions(
+      segments,
+      startIdx,
+      startIdx + needle.length
+    );
+  }
+
+  /**
+   * Builds the document's plain text the way `textBetween` does, along with
+   * the ProseMirror range each run of it came from.
+   *
+   * @param doc The document.
+   * @returns The plain text and its segments.
+   */
+  private static plainTextSegments(doc: Node): {
+    plain: string;
+    segments: PlainTextSegment[];
+  } {
     const plain = textBetween(doc, 0, doc.content.size);
 
     // Mirror textBetween's traversal so segment.plainStart aligns with the
     // characters in `plain`. If textBetween's algorithm changes, this walk
     // must change with it.
-    type Segment = {
-      plainStart: number;
-      pmFrom: number;
-      pmTo: number;
-      length: number;
-      isAtom: boolean;
-    };
-    const segments: Segment[] = [];
+    const segments: PlainTextSegment[] = [];
     let plainPos = 0;
     let first = true;
 
@@ -1612,35 +1841,25 @@ export class ProsemirrorHelper extends SharedProsemirrorHelper {
       return !isLeafText;
     });
 
-    const prefix = options.prefix ?? "";
-    const suffix = options.suffix ?? "";
+    return { plain, segments };
+  }
 
-    let startIdx = -1;
-    let searchFrom = 0;
-    while (true) {
-      const candidate = plain.indexOf(needle, searchFrom);
-      if (candidate === -1) {
-        return null;
-      }
-      const candidateEnd = candidate + needle.length;
-      const prefixOk =
-        prefix.length === 0 ||
-        (candidate >= prefix.length &&
-          plain.substring(candidate - prefix.length, candidate) === prefix);
-      const suffixOk =
-        suffix.length === 0 ||
-        (candidateEnd + suffix.length <= plain.length &&
-          plain.substring(candidateEnd, candidateEnd + suffix.length) ===
-            suffix);
-      if (prefixOk && suffixOk) {
-        startIdx = candidate;
-        break;
-      }
-      searchFrom = candidate + 1;
-    }
-
-    const endIdx = startIdx + needle.length;
-
+  /**
+   * Maps a range of the plain text built by `plainTextSegments` back to
+   * ProseMirror positions. Atom nodes (whose plain content comes from
+   * `leafText`) cannot be sliced into, so a range that falls inside one is
+   * clamped to the atom's full range.
+   *
+   * @param segments The segments of the plain text.
+   * @param startIdx The start of the range in the plain text.
+   * @param endIdx The end of the range in the plain text.
+   * @returns The ProseMirror range, or null if it cannot be mapped.
+   */
+  private static plainRangeToPositions(
+    segments: PlainTextSegment[],
+    startIdx: number,
+    endIdx: number
+  ): { from: number; to: number } | null {
     let from: number | null = null;
     for (const s of segments) {
       if (s.plainStart <= startIdx && startIdx < s.plainStart + s.length) {
@@ -1660,6 +1879,113 @@ export class ProsemirrorHelper extends SharedProsemirrorHelper {
     }
 
     return { from, to };
+  }
+
+  /**
+   * Maps a ProseMirror position to its offset in the plain text built by
+   * `plainTextSegments`.
+   *
+   * @param segments The segments of the plain text.
+   * @param pos The ProseMirror position.
+   * @param side Whether the position starts or ends a range, which decides
+   * the segment it belongs to where two segments meet.
+   * @returns The offset in the plain text, or null if it is not in any segment.
+   */
+  private static positionToPlain(
+    segments: PlainTextSegment[],
+    pos: number,
+    side: "start" | "end"
+  ): number | null {
+    for (const s of segments) {
+      const inside =
+        side === "start"
+          ? s.pmFrom <= pos && pos < s.pmTo
+          : s.pmFrom < pos && pos <= s.pmTo;
+      if (inside) {
+        if (s.isAtom) {
+          return side === "start" ? s.plainStart : s.plainStart + s.length;
+        }
+        return s.plainStart + (pos - s.pmFrom);
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Picks where an anchor's text now is in the plain text: the occurrence
+   * whose surroundings share the most characters with the recorded prefix and
+   * suffix. A single occurrence is taken as it is; several that tie are
+   * ambiguous.
+   *
+   * @param plain The plain text to search.
+   * @param anchor The anchor to place.
+   * @returns The start of the occurrence, or null if there is none or it is
+   * ambiguous.
+   */
+  private static bestOccurrence(
+    plain: string,
+    anchor: CommentAnchor
+  ): number | null {
+    const text = anchor.text ?? "";
+    const prefix = anchor.prefix ?? "";
+    const suffix = anchor.suffix ?? "";
+    let best: number | null = null;
+    let bestScore = -1;
+    let tied = false;
+
+    for (
+      let at = plain.indexOf(text);
+      at !== -1 && text.length > 0;
+      at = plain.indexOf(text, at + 1)
+    ) {
+      const before = plain.slice(Math.max(0, at - prefix.length), at);
+      const after = plain.slice(
+        at + text.length,
+        at + text.length + suffix.length
+      );
+      let score = 0;
+      while (
+        score < before.length &&
+        before[before.length - 1 - score] === prefix[prefix.length - 1 - score]
+      ) {
+        score++;
+      }
+      let suffixScore = 0;
+      while (
+        suffixScore < after.length &&
+        after[suffixScore] === suffix[suffixScore]
+      ) {
+        suffixScore++;
+      }
+      score += suffixScore;
+
+      if (score > bestScore) {
+        best = at;
+        bestScore = score;
+        tied = false;
+      } else if (score === bestScore) {
+        tied = true;
+      }
+    }
+
+    return tied ? null : best;
+  }
+
+  /**
+   * Reads a comment mark's attributes from a mark or a stored mark object.
+   *
+   * @param attrs The mark's attributes.
+   * @returns The comment mark's attributes.
+   */
+  private static toCommentMarkAttrs(
+    attrs: Record<string, unknown> | undefined
+  ): CommentMarkAttrs {
+    return {
+      id: String(attrs?.id ?? ""),
+      userId: String(attrs?.userId ?? ""),
+      resolved: attrs?.resolved === true,
+      draft: attrs?.draft === true,
+    };
   }
 
   /**

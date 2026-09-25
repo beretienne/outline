@@ -787,6 +787,29 @@ export class DocumentHelper {
       }
     } else {
       doc = parser.parse(text);
+
+      // Markdown has no syntax for a comment's anchor, so replacing the whole
+      // document would detach every comment from its text. Put each one back
+      // where its text still is.
+      const anchors = document.content
+        ? ProsemirrorHelper.getCommentAnchors(
+            DocumentHelper.toProsemirror(document)
+          )
+        : [];
+      if (anchors.length) {
+        const reanchored = ProsemirrorHelper.reanchorComments(doc, anchors);
+        doc = reanchored.doc;
+        if (reanchored.missed.length) {
+          Logger.info(
+            "commands",
+            "Comments left detached after a Markdown update, their text is gone",
+            {
+              documentId: document.id,
+              commentIds: reanchored.missed.map((anchor) => anchor.attrs.id),
+            }
+          );
+        }
+      }
     }
 
     // Store the trailing paragraph the editor would add on load, so opening
