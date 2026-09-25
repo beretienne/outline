@@ -1,9 +1,20 @@
+import { Node } from "prosemirror-model";
+import * as Y from "yjs";
+import { schema } from "@server/editor";
+import documentCollaborativeUpdater from "@server/commands/documentCollaborativeUpdater";
+import Logger from "@server/logging/Logger";
+import type Document from "@server/models/Document";
 import Revision from "@server/models/Revision";
-import { buildCollection, buildDocument } from "@server/test/factories";
+import {
+  buildCollection,
+  buildDocument,
+  buildUser,
+} from "@server/test/factories";
 import { ChangesetHelper } from "@shared/editor/lib/ChangesetHelper";
 import { EditorStyleHelper } from "@shared/editor/styles/EditorStyleHelper";
 import { HeadingPrefixStyle } from "@shared/types";
 import { DocumentHelper } from "./DocumentHelper";
+import { ProsemirrorHelper } from "./ProsemirrorHelper";
 
 describe("DocumentHelper", () => {
   beforeAll(() => {
@@ -1394,6 +1405,110 @@ Install instructions here.`,
         DocumentHelper.getAnchorContent(document, "h-missing")
       ).toBeUndefined();
       expect(DocumentHelper.getAnchorContent(document, "")).toBeUndefined();
+    });
+  });
+
+  describe("applyMarkdownToDocument", () => {
+    const withState = async (text: string) => {
+      const document = await buildDocument({ text });
+      document.state = Buffer.from(
+        Y.encodeStateAsUpdate(ProsemirrorHelper.toYDoc(document.content!))
+      );
+      return document;
+    };
+
+    const stateOf = (document: Document) => {
+      const ydoc = new Y.Doc();
+      Y.applyUpdate(ydoc, document.state!);
+      return ydoc;
+    };
+
+    const contentOf = (document: Document) =>
+      Node.fromJSON(schema, document.content);
+
+    it("carries a mark swapped for another on the same text into the state", async () => {
+      const document = await withState("a *Camera* b");
+      const warn = vi.spyOn(Logger, "warn");
+
+      DocumentHelper.applyMarkdownToDocument(document, "a `Camera` b");
+
+      expect(JSON.stringify(document.content)).toContain("code_inline");
+      expect(
+        DocumentHelper.stateHolds(stateOf(document), contentOf(document))
+      ).toBe(true);
+      expect(warn).not.toHaveBeenCalled();
+      warn.mockRestore();
+    });
+
+    it("keeps the marks of an inline node in the state", async () => {
+      const document = await withState("before $x$ after");
+
+      DocumentHelper.applyMarkdownToDocument(document, "before **$x$** after");
+
+      const content = contentOf(document);
+      let marks: string[] = [];
+      content.descendants((node) => {
+        if (node.type.name === "math_inline") {
+          marks = node.marks.map((mark) => mark.type.name);
+        }
+      });
+      expect(marks).toEqual(["strong"]);
+      expect(DocumentHelper.stateHolds(stateOf(document), content)).toBe(true);
+    });
+
+    it("stores the trailing paragraph the editor adds in content and state", async () => {
+      const document = await withState("Hello");
+
+      DocumentHelper.applyMarkdownToDocument(document, "- one\n- two");
+
+      const content = contentOf(document);
+      expect(content.lastChild?.type.name).toBe("paragraph");
+      expect(content.lastChild?.childCount).toBe(0);
+      expect(DocumentHelper.stateHolds(stateOf(document), content)).toBe(true);
+      expect(
+        await DocumentHelper.toMarkdown(document, { includeTitle: false })
+      ).toBe("- one\n- two");
+    });
+
+    it("replaces the state's content when an update does not carry the document", async () => {
+      const document = await withState("Hello");
+      vi.spyOn(DocumentHelper, "stateHolds").mockReturnValueOnce(false);
+
+      DocumentHelper.applyMarkdownToDocument(document, "Hello *world*");
+
+      expect(
+        DocumentHelper.stateHolds(stateOf(document), contentOf(document))
+      ).toBe(true);
+    });
+
+    it("leaves nothing for an editing session to save", async () => {
+      const user = await buildUser();
+      const document = await buildDocument({
+        teamId: user.teamId,
+        userId: user.id,
+        text: "Some *term* here\n\n**$x$**",
+      });
+      document.state = Buffer.from(
+        Y.encodeStateAsUpdate(ProsemirrorHelper.toYDoc(document.content!))
+      );
+      DocumentHelper.applyMarkdownToDocument(
+        document,
+        "Some `term` here\n\n*$x$* and $y$\n\n1. last"
+      );
+      await document.save();
+      const updatedAt = document.updatedAt;
+
+      // What the collaboration server saves when the document is opened.
+      await documentCollaborativeUpdater({
+        documentId: document.id,
+        ydoc: stateOf(document),
+        sessionCollaboratorIds: [user.id],
+        isLastConnection: true,
+        clientVersion: null,
+      });
+
+      await document.reload();
+      expect(document.updatedAt).toEqual(updatedAt);
     });
   });
 });

@@ -618,6 +618,8 @@ describe("documentUpdater", () => {
               listItem("Third item"),
             ],
           },
+          // The trailing paragraph the editor adds after a list on load.
+          { type: "paragraph" },
         ],
       });
     });

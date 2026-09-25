@@ -1,5 +1,5 @@
 diff --git a/node_modules/y-prosemirror/src/plugins/sync-plugin.js b/node_modules/y-prosemirror/src/plugins/sync-plugin.js
-index dccfb76..45b6f1a 100644
+index dccfb76..09026e5 100644
 --- a/node_modules/y-prosemirror/src/plugins/sync-plugin.js
 +++ b/node_modules/y-prosemirror/src/plugins/sync-plugin.js
 @@ -4,7 +4,7 @@
@@ -148,3 +148,223 @@ index dccfb76..45b6f1a 100644
  
  /**
   * Binding for prosemirror.
+@@ -798,7 +828,13 @@ export const createNodeFromYElement = (
+           : { type: 'added' }
+       }
+     }
+-    const node = schema.node(el.nodeName, attrs, children)
++    // marks of a type the schema does not know are dropped, not thrown on,
++    // since a throw here deletes the whole element from the Y document
++    const marks = (attrs[ynodeMarksAttr] || [])
++      .filter((mark) => schema.marks[mark.type] !== undefined)
++      .map((mark) => schema.markFromJSON(mark))
++    delete attrs[ynodeMarksAttr]
++    const node = schema.node(el.nodeName, attrs, children, marks)
+     meta.mapping.set(el, node)
+     return node
+   } catch (e) {
+@@ -873,8 +909,9 @@ const createTypeFromTextNodes = (nodes, meta) => {
+  */
+ const createTypeFromElementNode = (node, meta) => {
+   const type = new Y.XmlElement(node.type.name)
+-  for (const key in node.attrs) {
+-    const val = node.attrs[key]
++  const attrs = pNodeYAttrs(node)
++  for (const key in attrs) {
++    const val = attrs[key]
+     if (val !== null && key !== 'ychange') {
+       type.setAttribute(key, val)
+     }
+@@ -964,7 +1001,10 @@ const equalYTextPText = (ytext, ptexts) => {
+       object.every(d.attributes, (attr, yattrname) => {
+         const markname = yattr2markname(yattrname)
+         const pmarks = ptexts[i].marks
+-        return equalAttrs(attr, pmarks.find(/** @param {any} mark */ mark => mark.type.name === markname)?.attrs)
++        const pmark = pmarks.find(/** @param {any} mark */ mark => mark.type.name === markname)
++        // A mark ProseMirror does not have must never compare equal to an
++        // attribute-less one, or swapping such a mark never reaches Yjs.
++        return pmark !== undefined && equalAttrs(attr, pmark.attrs)
+       })
+     )
+ }
+@@ -980,7 +1020,7 @@ const equalYTypePNode = (ytype, pnode) => {
+   ) {
+     const normalizedContent = normalizePNodeContent(pnode)
+     return ytype._length === normalizedContent.length &&
+-      equalAttrs(ytype.getAttributes(), pnode.attrs) &&
++      equalAttrs(ytype.getAttributes(), pNodeYAttrs(pnode)) &&
+       ytype.toArray().every((ychild, i) =>
+         equalYTypePNode(ychild, normalizedContent[i])
+       )
+@@ -1118,6 +1158,26 @@ export const attributesToMarks = (attrs, schema) => {
+  * @param {Array<import('prosemirror-model').Mark>} marks
+  * @param {BindingMetadata} meta
+  */
++/**
++ * The Y attribute holding the marks of a non-text node (an inline atom such
++ * as math or an image), which would otherwise not be stored at all.
++ */
++export const ynodeMarksAttr = 'ymarks'
++
++/**
++ * The attributes a non-text ProseMirror node is stored with in Yjs: its own
++ * attributes, plus its marks when it has any.
++ *
++ * @param {PModel.Node} pnode
++ * @return {Object<string, any>}
++ */
++const pNodeYAttrs = (pnode) => {
++  const marks = pnode.marks.filter((mark) => mark.type.name !== 'ychange')
++  return marks.length > 0
++    ? { ...pnode.attrs, [ynodeMarksAttr]: marks.map((mark) => mark.toJSON()) }
++    : pnode.attrs
++}
++
+ const marksToAttributes = (marks, meta) => {
+   const pattrs = {}
+   marks.forEach((mark) => {
+@@ -1153,10 +1213,14 @@ export const updateYFragment = (y, yDomFragment, pNode, meta) => {
+   // update attributes
+   if (yDomFragment instanceof Y.XmlElement) {
+     const yDomAttrs = yDomFragment.getAttributes()
+-    const pAttrs = pNode.attrs
++    const pAttrs = pNodeYAttrs(pNode)
+     for (const key in pAttrs) {
+       if (pAttrs[key] !== null) {
+-        if (yDomAttrs[key] !== pAttrs[key] && key !== 'ychange') {
++        if (
++          yDomAttrs[key] !== pAttrs[key] && key !== 'ychange' &&
++          // marks are a fresh array each time, compare them by value
++          !(key === ynodeMarksAttr && isObject(yDomAttrs[key]) && equalAttrs(yDomAttrs[key], pAttrs[key]))
++        ) {
+           yDomFragment.setAttribute(key, pAttrs[key])
+         }
+       } else {
+diff --git a/node_modules/y-prosemirror/src/lib.js b/node_modules/y-prosemirror/src/lib.js
+index 3f48497..9a856ac 100644
+--- a/node_modules/y-prosemirror/src/lib.js
++++ b/node_modules/y-prosemirror/src/lib.js
+@@ -1,4 +1,4 @@
+-import { updateYFragment, createNodeFromYElement, yattr2markname, createEmptyMeta } from './plugins/sync-plugin.js' // eslint-disable-line
++import { updateYFragment, createNodeFromYElement, yattr2markname, createEmptyMeta, ynodeMarksAttr } from './plugins/sync-plugin.js' // eslint-disable-line
+ import { ySyncPluginKey } from './plugins/keys.js'
+ import * as Y from 'yjs'
+ import { EditorView } from 'prosemirror-view' // eslint-disable-line
+@@ -417,6 +417,10 @@ export function yXmlFragmentToProsemirrorJSON (xmlFragment) {
+       }
+ 
+       const attrs = item.getAttributes()
++      if (attrs[ynodeMarksAttr] !== undefined) {
++        response.marks = attrs[ynodeMarksAttr]
++        delete attrs[ynodeMarksAttr]
++      }
+       if (Object.keys(attrs).length) {
+         response.attrs = attrs
+       }
+diff --git a/node_modules/y-prosemirror/dist/y-prosemirror.cjs b/node_modules/y-prosemirror/dist/y-prosemirror.cjs
+index de4d1e6..cdd59a2 100644
+--- a/node_modules/y-prosemirror/dist/y-prosemirror.cjs
++++ b/node_modules/y-prosemirror/dist/y-prosemirror.cjs
+@@ -872,7 +872,13 @@ const createNodeFromYElement = (
+           : { type: 'added' };
+       }
+     }
+-    const node = schema.node(el.nodeName, attrs, children);
++    // marks of a type the schema does not know are dropped, not thrown on,
++    // since a throw here deletes the whole element from the Y document
++    const marks = (attrs[ynodeMarksAttr] || [])
++      .filter((mark) => schema.marks[mark.type] !== undefined)
++      .map((mark) => schema.markFromJSON(mark));
++    delete attrs[ynodeMarksAttr];
++    const node = schema.node(el.nodeName, attrs, children, marks);
+     meta.mapping.set(el, node);
+     return node
+   } catch (e) {
+@@ -947,8 +953,9 @@ const createTypeFromTextNodes = (nodes, meta) => {
+  */
+ const createTypeFromElementNode = (node, meta) => {
+   const type = new Y__namespace.XmlElement(node.type.name);
+-  for (const key in node.attrs) {
+-    const val = node.attrs[key];
++  const attrs = pNodeYAttrs(node);
++  for (const key in attrs) {
++    const val = attrs[key];
+     if (val !== null && key !== 'ychange') {
+       type.setAttribute(key, val);
+     }
+@@ -1038,7 +1045,10 @@ const equalYTextPText = (ytext, ptexts) => {
+       object__namespace.every(d.attributes, (attr, yattrname) => {
+         const markname = yattr2markname(yattrname);
+         const pmarks = ptexts[i].marks;
+-        return equalAttrs(attr, pmarks.find(/** @param {any} mark */ mark => mark.type.name === markname)?.attrs)
++        const pmark = pmarks.find(/** @param {any} mark */ mark => mark.type.name === markname);
++        // A mark ProseMirror does not have must never compare equal to an
++        // attribute-less one, or swapping such a mark never reaches Yjs.
++        return pmark !== undefined && equalAttrs(attr, pmark.attrs)
+       })
+     )
+ };
+@@ -1054,7 +1064,7 @@ const equalYTypePNode = (ytype, pnode) => {
+   ) {
+     const normalizedContent = normalizePNodeContent(pnode);
+     return ytype._length === normalizedContent.length &&
+-      equalAttrs(ytype.getAttributes(), pnode.attrs) &&
++      equalAttrs(ytype.getAttributes(), pNodeYAttrs(pnode)) &&
+       ytype.toArray().every((ychild, i) =>
+         equalYTypePNode(ychild, normalizedContent[i])
+       )
+@@ -1192,6 +1202,26 @@ const attributesToMarks = (attrs, schema) => {
+  * @param {Array<import('prosemirror-model').Mark>} marks
+  * @param {BindingMetadata} meta
+  */
++/**
++ * The Y attribute holding the marks of a non-text node (an inline atom such
++ * as math or an image), which would otherwise not be stored at all.
++ */
++const ynodeMarksAttr = 'ymarks';
++
++/**
++ * The attributes a non-text ProseMirror node is stored with in Yjs: its own
++ * attributes, plus its marks when it has any.
++ *
++ * @param {PModel.Node} pnode
++ * @return {Object<string, any>}
++ */
++const pNodeYAttrs = (pnode) => {
++  const marks = pnode.marks.filter((mark) => mark.type.name !== 'ychange');
++  return marks.length > 0
++    ? { ...pnode.attrs, [ynodeMarksAttr]: marks.map((mark) => mark.toJSON()) }
++    : pnode.attrs
++};
++
+ const marksToAttributes = (marks, meta) => {
+   const pattrs = {};
+   marks.forEach((mark) => {
+@@ -1227,10 +1257,14 @@ const updateYFragment = (y, yDomFragment, pNode, meta) => {
+   // update attributes
+   if (yDomFragment instanceof Y__namespace.XmlElement) {
+     const yDomAttrs = yDomFragment.getAttributes();
+-    const pAttrs = pNode.attrs;
++    const pAttrs = pNodeYAttrs(pNode);
+     for (const key in pAttrs) {
+       if (pAttrs[key] !== null) {
+-        if (yDomAttrs[key] !== pAttrs[key] && key !== 'ychange') {
++        if (
++          yDomAttrs[key] !== pAttrs[key] && key !== 'ychange' &&
++          // marks are a fresh array each time, compare them by value
++          !(key === ynodeMarksAttr && isObject(yDomAttrs[key]) && equalAttrs(yDomAttrs[key], pAttrs[key]))
++        ) {
+           yDomFragment.setAttribute(key, pAttrs[key]);
+         }
+       } else {
+@@ -1789,6 +1823,10 @@ function yXmlFragmentToProsemirrorJSON (xmlFragment) {
+       };
+ 
+       const attrs = item.getAttributes();
++      if (attrs[ynodeMarksAttr] !== undefined) {
++        response.marks = attrs[ynodeMarksAttr];
++        delete attrs[ynodeMarksAttr];
++      }
+       if (Object.keys(attrs).length) {
+         response.attrs = attrs;
+       }

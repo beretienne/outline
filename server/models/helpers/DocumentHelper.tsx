@@ -9,6 +9,7 @@ import {
 } from "@shared/editor/lib/ChangesetHelper";
 import headingToSlug from "@shared/editor/lib/headingToSlug";
 import textBetween from "@shared/editor/lib/textBetween";
+import { withTrailingNode } from "@shared/editor/lib/trailingNode";
 import { EditorStyleHelper } from "@shared/editor/styles/EditorStyleHelper";
 import type { NavigationNode, ProsemirrorData } from "@shared/types";
 import { DocumentPreference, IconType, TextEditMode } from "@shared/types";
@@ -16,6 +17,7 @@ import { determineIconType } from "@shared/utils/icon";
 import { ProsemirrorDataHelper } from "@shared/utils/ProsemirrorDataHelper";
 import { parser, serializer, schema } from "@server/editor";
 import { ValidationError } from "@server/errors";
+import Logger from "@server/logging/Logger";
 import { addTags } from "@server/logging/tracer";
 import { trace } from "@server/logging/tracing";
 import type { Template } from "@server/models";
@@ -787,31 +789,87 @@ export class DocumentHelper {
       doc = parser.parse(text);
     }
 
+    // Store the trailing paragraph the editor would add on load, so opening
+    // the document does not write it back as an edit.
+    doc = withTrailingNode(doc);
+
     document.content = doc.toJSON();
     document.text = serializer.serialize(doc);
+    DocumentHelper.applyProsemirrorToState(document, doc);
 
-    if (document.state) {
-      const ydoc = new Y.Doc();
-      Y.applyUpdate(ydoc, document.state);
-      const type = ydoc.get("default", Y.XmlFragment) as Y.XmlFragment;
+    return document;
+  }
 
-      if (!type.doc) {
-        throw new Error("type.doc not found");
-      }
+  /**
+   * Brings the document's collaborative state in line with the given
+   * ProseMirror document, as a change on top of the existing state so that
+   * connected editors merge it. The editor loads the state rather than the
+   * content, so whatever the incremental update fails to carry would be written
+   * back as an edit the next time the document is opened; when the result does
+   * not hold exactly the given document, the state's content is replaced as a
+   * whole instead.
+   *
+   * @param document The document whose state to update, if it has one.
+   * @param doc The ProseMirror document the state must hold.
+   * @returns true if the state's content had to be replaced as a whole.
+   * @throws if the state has no fragment to update.
+   */
+  static applyProsemirrorToState(document: Document, doc: Node): boolean {
+    if (!document.state) {
+      return false;
+    }
 
-      // apply new document to existing ydoc
-      updateYFragment(type.doc, type, doc, {
+    const ydoc = new Y.Doc();
+    Y.applyUpdate(ydoc, document.state);
+    const type = ydoc.get("default", Y.XmlFragment) as Y.XmlFragment;
+    const typeDoc = type.doc;
+
+    if (!typeDoc) {
+      throw new Error("type.doc not found");
+    }
+
+    const update = () =>
+      updateYFragment(typeDoc, type, doc, {
         mapping: new Map(),
         isOMark: new Map(),
       });
 
-      const state = Y.encodeStateAsUpdate(ydoc);
+    update();
 
-      document.state = Buffer.from(state);
-      document.changed("state", true);
+    const replaced = !DocumentHelper.stateHolds(ydoc, doc);
+    if (replaced) {
+      Logger.warn(
+        "Collaborative state differs from the document after an update, replacing its content",
+        { documentId: document.id }
+      );
+      typeDoc.transact(() => type.delete(0, type.length));
+      update();
+
+      if (!DocumentHelper.stateHolds(ydoc, doc)) {
+        Logger.warn(
+          "Collaborative state still differs from the document after replacing its content",
+          { documentId: document.id }
+        );
+      }
     }
 
-    return document;
+    document.state = Buffer.from(Y.encodeStateAsUpdate(ydoc));
+    document.changed("state", true);
+
+    return replaced;
+  }
+
+  /**
+   * Whether the collaborative state holds exactly the given document.
+   *
+   * @param ydoc The collaborative state.
+   * @param doc The ProseMirror document to compare with.
+   * @returns true if the state converts back to the same document.
+   */
+  static stateHolds(ydoc: Y.Doc, doc: Node): boolean {
+    return Node.fromJSON(schema, yDocToProsemirrorJSON(ydoc, "default")).eq(
+      doc
+    );
   }
 
   /**
