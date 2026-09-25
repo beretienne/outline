@@ -1638,6 +1638,70 @@ Install instructions here.`,
       });
     });
 
+    describe("node ids", () => {
+      const ids = (doc: Node, type = "checkbox_list") => {
+        const found: (string | null)[] = [];
+        doc.descendants((node) => {
+          if (node.type.name === type) {
+            found.push(node.attrs.id);
+          }
+        });
+        return found;
+      };
+
+      const withIds = (markdown: string, listIds: string[]) => {
+        let tr = new Transform(parser.parse(markdown));
+        let index = 0;
+        tr.doc.descendants((node, pos) => {
+          if (node.type.name === "checkbox_list") {
+            tr = tr.setNodeAttribute(pos, "id", listIds[index++]);
+          }
+        });
+        return tr.doc;
+      };
+
+      it("keeps a checkbox list's id across a Markdown update", async () => {
+        const document = await buildDocument({ text: "placeholder" });
+        document.content = withIds("- [x] one\n- [ ] two\n\nText.", [
+          "list-1",
+        ]).toJSON();
+
+        DocumentHelper.applyMarkdownToDocument(
+          document,
+          "- [x] one\n- [ ] two\n\nText, edited."
+        );
+
+        expect(ids(contentOf(document))).toEqual(["list-1"]);
+      });
+
+      it("matches lists by their text, then by the text they still share", async () => {
+        const document = await buildDocument({ text: "placeholder" });
+        document.content = withIds("- [ ] alpha\n\nBetween.\n\n- [ ] beta", [
+          "list-a",
+          "list-b",
+        ]).toJSON();
+
+        // A new list first, "alpha" unchanged, "beta" edited.
+        DocumentHelper.applyMarkdownToDocument(
+          document,
+          "- [ ] new\n\nIntro.\n\n- [ ] alpha\n\nBetween.\n\n- [ ] beta, edited"
+        );
+
+        const [newList, alpha, beta] = ids(contentOf(document));
+        expect(alpha).toBe("list-a");
+        expect(beta).toBe("list-b");
+        expect(newList).toMatch(/^[0-9a-f-]{36}$/);
+      });
+
+      it("gives a new checkbox list an id straight away", async () => {
+        const document = await buildDocument({ text: "Nothing yet." });
+
+        DocumentHelper.applyMarkdownToDocument(document, "- [ ] todo");
+
+        expect(ids(contentOf(document))[0]).toMatch(/^[0-9a-f-]{36}$/);
+      });
+    });
+
     it("leaves nothing for an editing session to save", async () => {
       const user = await buildUser();
       const document = await buildDocument({

@@ -11,6 +11,7 @@ import {
 } from "prosemirror-view";
 import { Node, Fragment } from "prosemirror-model";
 import { Transform } from "prosemirror-transform";
+import { v4 as generateUuid } from "uuid";
 import { renderToString } from "react-dom/server";
 import styled, { ServerStyleSheet, ThemeProvider } from "styled-components";
 import {
@@ -1664,6 +1665,89 @@ export class ProsemirrorHelper extends SharedProsemirrorHelper {
     return { doc: tr.doc, missed };
   }
 
+  /**
+   * Carries the ids the editor gives checkbox lists and toggle blocks over
+   * from a document's previous version, typically across a Markdown update,
+   * which has no syntax for them. The ids key per-reader state kept in the
+   * browser ("Hide completed", whether a block is folded), and without them
+   * every update loses that state and the next edit records a false change
+   * as the editor assigns new ones.
+   *
+   * A node takes the id of a node of the same type with the same text, else
+   * of the unused one sharing the most text at its start and end, so that an
+   * edited list keeps its id but a new one does not take another's. A
+   * checkbox list left without
+   * one gets a new id, so that the editor does not add one on the next edit;
+   * a toggle block does not, since a toggle block with an id the reader has
+   * no state for is shown folded.
+   *
+   * @param previous The previous version of the document.
+   * @param doc The new version of the document.
+   * @returns The new version with the ids carried over.
+   */
+  static carryOverNodeIds(previous: Node, doc: Node): Node {
+    const tr = new Transform(doc);
+
+    for (const typeName of ["checkbox_list", "container_toggle"]) {
+      const old: { id: string; text: string; used: boolean }[] = [];
+      previous.descendants((node) => {
+        if (node.type.name === typeName && typeof node.attrs.id === "string") {
+          old.push({ id: node.attrs.id, text: node.textContent, used: false });
+        }
+      });
+
+      const current: { pos: number; text: string; id?: string }[] = [];
+      doc.descendants((node, pos) => {
+        if (node.type.name === typeName) {
+          current.push({ pos, text: node.textContent });
+        }
+      });
+
+      // Same text first, so that a list moved or added elsewhere does not
+      // shift every id after it.
+      for (const node of current) {
+        const match = old.find((o) => !o.used && o.text === node.text);
+        if (match) {
+          match.used = true;
+          node.id = match.id;
+        }
+      }
+      // Then, for nodes whose text was edited, the unused old node sharing
+      // the most text at its start and end; one sharing none is not a match.
+      const pairs: {
+        node: (typeof current)[number];
+        o: (typeof old)[number];
+        score: number;
+      }[] = [];
+      for (const node of current.filter((n) => !n.id)) {
+        for (const o of old.filter((candidate) => !candidate.used)) {
+          const score = ProsemirrorHelper.sharedEnds(node.text, o.text);
+          if (score > 0) {
+            pairs.push({ node, o, score });
+          }
+        }
+      }
+      pairs.sort((a, b) => b.score - a.score);
+      for (const { node, o } of pairs) {
+        if (!node.id && !o.used) {
+          o.used = true;
+          node.id = o.id;
+        }
+      }
+
+      for (const node of current) {
+        const id =
+          node.id ??
+          (typeName === "checkbox_list" ? generateUuid() : undefined);
+        if (id) {
+          tr.setNodeAttribute(node.pos, "id", id);
+        }
+      }
+    }
+
+    return tr.doc;
+  }
+
   private static applyCommentMarkAtRange(
     yjsDoc: Y.Doc,
     doc: Node,
@@ -1969,6 +2053,29 @@ export class ProsemirrorHelper extends SharedProsemirrorHelper {
     }
 
     return tied ? null : best;
+  }
+
+  /**
+   * Counts the characters two strings share at their start and at their end.
+   *
+   * @param a One string.
+   * @param b The other.
+   * @returns The length of the common prefix plus that of the common suffix.
+   */
+  private static sharedEnds(a: string, b: string): number {
+    const limit = Math.min(a.length, b.length);
+    let prefix = 0;
+    while (prefix < limit && a[prefix] === b[prefix]) {
+      prefix++;
+    }
+    let suffix = 0;
+    while (
+      suffix < limit - prefix &&
+      a[a.length - 1 - suffix] === b[b.length - 1 - suffix]
+    ) {
+      suffix++;
+    }
+    return prefix + suffix;
   }
 
   /**

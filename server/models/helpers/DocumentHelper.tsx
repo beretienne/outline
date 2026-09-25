@@ -787,14 +787,20 @@ export class DocumentHelper {
       }
     } else {
       doc = parser.parse(text);
+      const previous = document.content
+        ? DocumentHelper.toProsemirror(document)
+        : null;
+
+      // Nor for the ids the editor gives checkbox lists and toggle blocks.
+      if (previous) {
+        doc = ProsemirrorHelper.carryOverNodeIds(previous, doc);
+      }
 
       // Markdown has no syntax for a comment's anchor, so replacing the whole
       // document would detach every comment from its text. Put each one back
       // where its text still is.
-      const anchors = document.content
-        ? ProsemirrorHelper.getCommentAnchors(
-            DocumentHelper.toProsemirror(document)
-          )
+      const anchors = previous
+        ? ProsemirrorHelper.getCommentAnchors(previous)
         : [];
       if (anchors.length) {
         const reanchored = ProsemirrorHelper.reanchorComments(doc, anchors);
