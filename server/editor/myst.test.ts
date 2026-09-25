@@ -56,6 +56,9 @@ describe("preserved exactly", () => {
     ["thematic break", "---"],
     ["inline math (dollarmath)", "$x^2$"],
     ["block math (dollarmath)", "$$\nx^2\n$$"],
+    ["bold inside inline math", "The value $\\mathbf{s}$ is fixed."],
+    ["bold symbol inside inline math", "Within $\\boldsymbol{\\Delta t}$ ms."],
+    ["bold around inline math", "The value **$s$** is fixed."],
   ])("%s", (_name, source) => {
     expect(roundTrip(source)).toBe(source);
   });

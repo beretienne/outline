@@ -411,6 +411,30 @@ target left empty is not written to the Markdown at all.
 
 Both `$x^2$` inside a sentence and standalone blocks work.
 
+**Typing it in the editor** uses two dollar signs where the manual uses one:
+
+| You type | You get | In the manual's source |
+| --- | --- | --- |
+| `$$x^2$$` | a formula inside the sentence | `$x^2$` |
+| `$$$` then a space, at the start of a line | a standalone formula block | `$$`…`$$` on lines of their own |
+
+Typing `$x^2$` with single dollar signs stays plain text, so a sentence such as
+"costs $5 or $10" is never mistaken for a formula. Text pasted or synced with
+`$x^2$` in it does arrive as a formula.
+
+**Bold maths goes inside the formula.** Write `$$\mathbf{s}$$` for bold
+upright letters and digits, or `$$\boldsymbol{\Delta t}$$` for bold italic,
+Greek letters and symbols included. That is the only form that looks bold in
+Outline, the HTML manual and the PDF alike.
+
+Typing `**$$x$$**` does not bold it: by the time the closing asterisks arrive,
+the formula has already become a formula, and those shortcuts only apply to
+text. Selecting the formula (Shift+→ from just before it) and pressing **Ctrl+B**
+does add bold around it, written `**$x$**`, and it is kept through every sync.
+It changes nothing you can see, though: formulas are drawn in their own fonts,
+in Outline and in the manual, and ignore bold or italic around them. Reach for
+`\mathbf` instead.
+
 ---
 
 ## Images
